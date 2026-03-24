@@ -1,0 +1,31 @@
+# IDE and System files
+.git
+.idea
+*.iml
+.DS_Store
+.vscode/
+
+# Build tools and wrappers
+.mvn/
+mvnw
+mvnw.cmd
+
+# Node.js (if any)
+**/node_modules/
+
+# Ignore source code (we only need the JARs for the final image)
+**/src/
+
+# EXCEPTION: We need the target folders but ONLY the JAR files
+# First, ignore everything in target to keep the context light
+**/target/*
+# Then, use the "!" to allow only the .jar files back in
+!**/target/*.jar
+# But still ignore the helper folder created by Maven
+**/target/generated-sources/
+**/target/maven-status/
+**/target/classes/
+**/target/maven-archiver/
+
+# Ignore help files
+HELP.md

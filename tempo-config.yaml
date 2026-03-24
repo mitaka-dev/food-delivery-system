@@ -1,0 +1,18 @@
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    zipkin:
+
+ingester:
+  max_block_duration: 5m
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /tmp/tempo/traces
+
+overrides:
+  metrics_generator_processors: [service-graphs, span-metrics]

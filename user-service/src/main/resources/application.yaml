@@ -1,0 +1,43 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: user-service
+
+  # Database Configuration
+  datasource:
+    url: jdbc:postgresql://postgres-db:5432/user_db
+    username: user
+    password: password
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+  # Kafka Configuration
+  kafka:
+    bootstrap-servers: kafka:29092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      # Using JSON serializer to send DTOs from common-libs
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: user-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "food.ordering.system.*"
+
+  data:
+    redis:
+      host: ${REDIS_HOST:redis-cache}
+      port: ${REDIS_PORT:6379}
+
+jwt:
+  secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+  access-token-expiration: 900000      # 15 minutes
+  refresh-token-expiration: 604800000  # 7 days

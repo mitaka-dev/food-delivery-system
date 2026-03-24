@@ -1,0 +1,61 @@
+package food.ordering.system.user.service.service;
+
+import food.ordering.system.common.libs.records.UserCreatedEvent;
+import food.ordering.system.user.service.entity.User;
+import food.ordering.system.user.service.enums.UserStatus;
+import food.ordering.system.user.service.record.UserRegistrationDto;
+import food.ordering.system.user.service.repository.UserRepository;
+import jakarta.transaction.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.stereotype.Service;
+import java.util.UUID;
+
+import static food.ordering.system.common.libs.constants.KafkaConstants.*;
+
+@Service
+public class UserService {
+
+    private final UserRepository userRepository;
+    private final KafkaTemplate<String, UserCreatedEvent> kafkaTemplate;
+    private final BCryptPasswordEncoder passwordEncoder;
+    private static final Logger log = LoggerFactory.getLogger(UserService.class);
+
+    public UserService(UserRepository userRepository,
+                       KafkaTemplate<String, UserCreatedEvent> kafkaTemplate,
+                       BCryptPasswordEncoder passwordEncoder) {
+        this.userRepository = userRepository;
+        this.kafkaTemplate = kafkaTemplate;
+        this.passwordEncoder = passwordEncoder;
+    }
+
+    @Transactional
+    public void registerUser(UserRegistrationDto dto) {
+        User user = new User();
+        user.setId(UUID.randomUUID());
+        user.setUsername(dto.username());
+        user.setPassword(passwordEncoder.encode(dto.password())); // Хеширане
+        user.setRole(dto.role());
+        user.setStatus(UserStatus.PENDING);
+
+        userRepository.save(user);
+
+        UserCreatedEvent event = new UserCreatedEvent(user.getId(), dto.email(), user.getUsername(), user.getRole());
+
+        log.info("Sending user creation event to Kafka: {}", user.getId());
+        kafkaTemplate.send(USER_TOPIC, user.getId().toString(), event);
+    }
+
+    @KafkaListener(topics = USER_CONFIRMATION_TOPIC, groupId = USER_GROUP)
+    public void confirmUser(String userId) {
+        UUID id = UUID.fromString(userId);
+        userRepository.findById(id).ifPresent(user -> {
+            user.setStatus(UserStatus.ACTIVE);
+            userRepository.save(user);
+            log.info("SAGA DONE: User {} is ACTIVE!", id);
+        });
+    }
+}

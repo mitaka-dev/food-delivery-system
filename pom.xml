@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>food.ordering.system</groupId>
+    <artifactId>food-ordering-system-parent</artifactId>
+    <version>1.0-SNAPSHOT</version>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.11</version> <relativePath/>
+    </parent>
+
+    <packaging>pom</packaging> <modules>
+    <module>common-libs</module>
+    <module>gateway-service</module>
+    <module>user-service</module>
+<!--    <module>order-service</module>-->
+<!--    <module>product-service</module>-->
+<!--    <module>payment-service</module>-->
+    <module>analytics-service</module>
+</modules>
+
+    <properties>
+        <java.version>25</java.version>
+        <spring-cloud.version>2025.1.1</spring-cloud.version>
+        <common.libs.version>1.0</common.libs.version>
+        <maven.compiler.source>25</maven.compiler.source>
+        <maven.compiler.target>25</maven.compiler.target>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>food.ordering.system</groupId>
+                <artifactId>common-libs</artifactId>
+                <version>${common.libs.version}</version>
+                <scope>compile</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>
