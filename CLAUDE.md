@@ -1,84 +1,111 @@
-# Food Ordering System — Claude Code Guide
-
-## Project Overview
-A Spring Boot microservices project for a food ordering platform. Currently implements user registration with an event-driven Saga pattern. Order, product, and payment services are planned but not yet implemented.
+# CLAUDE.md
 
 ## Architecture
-
-```
-Client → Gateway (8080) → User Service (8081)
-                              ↓ Kafka (user-topics)
-                          Analytics Service (8082)
-                              ↓ Kafka (user-confirmation-topic)
-                          User Service (status: PENDING → ACTIVE)
-```
+Client → Gateway (8080) → Order Service (8083)
+                              ↓ Kafka (order-topics)
+                          payment-service [NOT BUILT]
+                              ↓ Kafka (order-confirmation-topic)
+                          Order Service (status: PENDING → PAID)
 
 ### Services
 | Service | Port | Responsibility |
 |---|---|---|
-| `gateway-service` | 8080 | API routing, rate limiting (10 req/s) |
-| `user-service` | 8081 | User registration, Kafka producer + consumer |
-| `analytics-service` | 8082 | Consumes user events, updates Redis counters |
+| `gateway-service` | 8080 | API routing, JWT validation, rate limiting (IP-based, Redis) |
+| `user-service` | 8081 | User registration + auth, Kafka producer + consumer |
+| `analytics-service` | 8082 | Consumes user events, updates Redis counters, triggers Saga confirmation |
+| `order-service` | 8083 | Order CRUD, Kafka producer + consumer |
 | `common-libs` | — | Shared DTOs, enums, Kafka constants |
 
 ### Planned (not yet implemented)
-- `order-service`
-- `product-service`
-- `payment-service`
+- `product-service` — catalog, stock reservation
+- `payment-service` — processes OrderCreatedEvents, publishes PaymentProcessedEvent
 
 ## Tech Stack
 - **Java 25**, **Spring Boot 3.5.11**, **Spring Cloud 2025.1.1**
 - **PostgreSQL 16** — user_db, order_db, payment_db
-- **Apache Kafka 7.5.0** — async messaging between services
-- **Redis (Alpine)** — analytics counters, gateway caching
+- **Apache Kafka 7.5.0** (Confluent CP) — async Saga messaging
+- **Redis (Alpine)** — refresh token storage, gateway rate limiting, analytics counters
 - **Spring WebFlux** — gateway and analytics (reactive)
-- **Spring MVC** — user-service (imperative)
-- **OpenTelemetry + Micrometer** — distributed tracing
-- **Grafana + Loki + Tempo** — observability stack
+- **Spring MVC** — user-service and order-service (imperative)
+- **OpenTelemetry + Micrometer → Tempo** — distributed tracing
+- **Loki + Grafana** — log aggregation and dashboards
 
-## Build & Run
+# Automated startup (generates secrets, builds, health-checks)
+./start.sh
 
-```bash
-# Build all modules
-./mvnw clean package
-
-# Build a single service
-./mvnw -pl user-service clean package
-
-# Run all infrastructure + services
-docker-compose up
-
-# Rebuild images and restart
-docker-compose up --build
+# Generate JWT_SECRET and credentials separately
+./generate-secrets.sh
 ```
 
-## Key Kafka Topics (defined in `common-libs`)
-- `user-topics` — user-service publishes `UserCreatedEvent` (3 partitions)
-- `user-confirmation-topic` — analytics-service publishes confirmation back
+**Note:** `JWT_SECRET` must be set in the environment before starting gateway and user services. `start.sh` handles this automatically.
+
+## JWT Architecture (Two-Layer Validation)
+
+**Gateway Layer** (`JwtAuthenticationFilter` — GlobalFilter, order -1):
+- Validates every request except public paths (`/api/v1/users`, `/api/v1/auth/**`, `/actuator`)
+- Parses JWT, checks expiration and `type == "access"`
+- Injects headers downstream: `X-User-Name: {username}`, `X-User-Role: {role}`
+- Returns 401 directly; downstream services never see invalid tokens
+
+**Service Layer** (`JwtAuthenticationFilter` — OncePerRequestFilter in user-service):
+- Re-validates the Bearer token, loads UserDetails from DB (including `status == ACTIVE` check)
+- Sets Spring Security context; continues silently if no token (for public endpoints)
+
+**JWT Claims Structure:**
+```json
+{ "sub": "username", "role": "ADMIN|USER|GUEST", "type": "access|refresh", "iat": ..., "exp": ... }
+```
+- Access token: 15 min; Refresh token: 7 days
+- Refresh tokens stored in Redis: key = `refresh_token:{username}`, TTL = 7 days
+- Logout deletes the Redis key, revoking the refresh token
+
+**Downstream services receive user identity via headers, not by re-parsing JWT.**
+
+**User Registration Saga:**
+1. `POST /api/v1/users` → User saved as `PENDING` → `UserCreatedEvent` → `user-topics`
+2. analytics-service consumes → increments `stats:roles:{ROLE}` in Redis → publishes `"SUCCESS"` → `user-confirmation-topic`
+3. user-service consumes → updates user to `ACTIVE` → user can now login
+
+**Order Creation Saga (payment-service not yet built):**
+1. `POST /api/v1/orders` (requires Bearer token) → Order saved as `PENDING` → `OrderCreatedEvent` → `order-topics`
+2. payment-service should consume, process payment, publish to `order-confirmation-topic`
+3. order-service consumes confirmation → updates order to `PAID`
+
+## Kafka Topics (defined in `common-libs/KafkaConstants`)
+| Constant | Value | Notes |
+| `USER_TOPIC` | `user-topics` | 3 partitions |
+| `USER_CONFIRMATION_TOPIC` | `user-confirmation-topic` | analytics → user-service |
+| `ORDER_TOPIC` | `order-topics` | 3 partitions |
+| `ORDER_CONFIRMATION_TOPIC` | `order-confirmation-topic` | payment → order-service |
+| `ANALYTICS_GROUP` | `analytics-group` | |
+| `USER_GROUP` | `user-group` | |
+| `ORDER_GROUP` | `order-group` | |
+
+## Key Data Notes
+- `Order.items` is stored as plain `TEXT` (no normalization); expected to be JSON string from client
+- `Order.status` transitions: `PENDING → PAID` (on confirmation) or `PENDING → FAILED/CANCELLED`
+- `User.status` transitions: `PENDING → ACTIVE` (on Saga confirmation); only `ACTIVE` users can authenticate
+- Hibernate `ddl-auto: update` — schema auto-evolves; no migration tooling yet
 
 ## Database
 - Host: `postgres-db:5432` (Docker), `localhost:5432` (local)
-- User: `user` / Password: `password`
-- Tables auto-created by Hibernate (`ddl-auto: update`)
-- Init scripts: `init-db/init.sh`, `init-db/init-db.sql`
+- Credentials: `user` / `password`
+- Databases: `user_db`, `order_db`, `payment_db` — created by `init-db/init.sh`
 
-## Observability Endpoints
+## Observability
 - Grafana: http://localhost:3000
 - Tempo (traces): http://localhost:3200
-- Zipkin receiver: http://localhost:9411
 - Loki (logs): http://localhost:3100
-- Actuator (gateway): `/actuator/health`, `/actuator/metrics`, `/actuator/prometheus`
-
-## User Registration Flow (currently implemented)
-1. `POST /api/v1/users` hits gateway → routed to user-service
-2. User saved to PostgreSQL with `status=PENDING`
-3. `UserCreatedEvent` published to `user-topics`
-4. Analytics service consumes event, increments Redis counter (`stats:roles:{ROLE}`)
-5. Analytics publishes confirmation to `user-confirmation-topic`
-6. User-service updates user `status=ACTIVE`
+- Zipkin receiver (for OTel export): http://localhost:9411
+- Actuator: `/actuator/health`, `/actuator/metrics`, `/actuator/prometheus` (gateway)
 
 ## Important Notes
-- Eureka service discovery is **disabled** — services use hardcoded Docker hostnames
-- All services run as non-root user (`spring:spring`) in Docker
-- 100% trace sampling configured (fine for dev, reduce for production)
-- Security: CSRF disabled, BCrypt password encoding, user endpoints are public
+- Eureka is **disabled** — all services use hardcoded Docker hostnames (e.g., `kafka:29092`, `redis-cache:6379`)
+- All Docker containers run as non-root user `spring:spring` (eclipse-temurin:25-jre-alpine base)
+- 100% trace sampling is configured — reduce for production
+- Rate limiting: 5 req/s (burst 10) on `/api/v1/users`; 10 req/s (burst 20) on `/api/v1/orders/**`
+
+## Project Plan & Progress
+> **Session start:** Read `PLAN.md` in the project root to know what is done and what is left.
+> **During the session:** Update `PLAN.md` checkboxes as features are completed.
+> **Session end:** When the user says anything like "we're done", "goodbye", "end session", or "wrap up" — review and update `PLAN.md` before responding, then confirm it has been updated.

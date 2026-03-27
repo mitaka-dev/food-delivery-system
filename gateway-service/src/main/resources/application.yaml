@@ -45,6 +45,18 @@ spring:
                 redis-rate-limiter.burstCapacity: 20
                 key-resolver: "#{@remoteAddrKeyResolver}"
 
+        # Protected: Product catalog (requires JWT; ADMIN enforcement done in product-service)
+        - id: product-service-route
+          uri: http://product-service:8085
+          predicates:
+            - Path=/api/v1/products/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 10
+                redis-rate-limiter.burstCapacity: 20
+                key-resolver: "#{@remoteAddrKeyResolver}"
+
 jwt:
   secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
 

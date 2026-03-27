@@ -18,9 +18,9 @@
     <module>common-libs</module>
     <module>gateway-service</module>
     <module>user-service</module>
-<!--    <module>order-service</module>-->
-<!--    <module>product-service</module>-->
-<!--    <module>payment-service</module>-->
+    <module>order-service</module>
+    <module>product-service</module>
+    <module>payment-service</module>
     <module>analytics-service</module>
 </modules>
 
