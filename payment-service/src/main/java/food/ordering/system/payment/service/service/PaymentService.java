@@ -11,6 +11,7 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -42,28 +43,37 @@ public class PaymentService {
         payment.setAmount(event.totalAmount());
         payment.setStatus(PaymentStatus.PENDING);
         payment.setCreatedAt(LocalDateTime.now());
-
         paymentRepository.save(payment);
 
-        // Simulate payment processing — mark as SUCCESS
-        payment.setStatus(PaymentStatus.SUCCESS);
-        paymentRepository.save(payment);
+        // Deterministic failure: amounts above 500 fail — makes compensation easy to trigger
+        boolean paymentFailed = event.totalAmount().compareTo(new BigDecimal("500")) > 0;
 
-        log.info("Payment {} processed successfully for order {}", payment.getId(), event.orderId());
+        if (paymentFailed) {
+            payment.setStatus(PaymentStatus.FAILED);
+            paymentRepository.save(payment);
+            log.warn("Payment {} FAILED for order {} — amount {} exceeds threshold",
+                    payment.getId(), event.orderId(), event.totalAmount());
+        } else {
+            payment.setStatus(PaymentStatus.SUCCESS);
+            paymentRepository.save(payment);
+            log.info("Payment {} processed successfully for order {}", payment.getId(), event.orderId());
+        }
 
-        // Notify order-service to mark the order as PAID
-        kafkaTemplate.send(ORDER_CONFIRMATION_TOPIC, event.orderId().toString(), event.orderId().toString());
-
-        // Publish event to payment-topics for future consumers (e.g. product-service stock release)
         PaymentProcessedEvent processedEvent = new PaymentProcessedEvent(
                 payment.getId(),
                 event.orderId(),
                 event.username(),
                 event.totalAmount(),
-                payment.getStatus().name()
+                payment.getStatus().name(),
+                event.items()
         );
+
+        // Notify order-service — carries status so it can set PAID or FAILED
+        kafkaTemplate.send(ORDER_CONFIRMATION_TOPIC, event.orderId().toString(), processedEvent);
+
+        // Notify product-service (and any future consumers) — carries items for stock rollback
         kafkaTemplate.send(PAYMENT_TOPIC, event.orderId().toString(), processedEvent);
 
-        log.info("SAGA: Order confirmation sent for orderId={}", event.orderId());
+        log.info("SAGA: Published PaymentProcessedEvent status={} for orderId={}", payment.getStatus().name(), event.orderId());
     }
 }

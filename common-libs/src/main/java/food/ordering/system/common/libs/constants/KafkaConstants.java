@@ -15,4 +15,6 @@ public class KafkaConstants {
 
     public static final String PAYMENT_TOPIC = "payment-topics";
     public static final String PAYMENT_GROUP = "payment-group";
+
+    public static final String PRODUCT_GROUP = "product-group";
 }

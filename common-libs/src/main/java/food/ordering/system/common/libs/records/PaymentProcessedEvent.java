@@ -1,6 +1,7 @@
 package food.ordering.system.common.libs.records;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 public record PaymentProcessedEvent(
@@ -8,5 +9,6 @@ public record PaymentProcessedEvent(
         UUID orderId,
         String username,
         BigDecimal amount,
-        String status
+        String status,
+        List<OrderItem> items
 ) {}

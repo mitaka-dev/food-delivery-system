@@ -117,7 +117,7 @@ The gateway already has a placeholder route for `/api/v1/orders/**`.
 - [x] `PaymentStatus` enum — PENDING, SUCCESS, FAILED, REFUNDED
 - [x] Kafka consumer on `order-topics` — process payment on order creation
 - [x] Publish `PaymentProcessedEvent` to Kafka (`payment-topics`)
-- [ ] Refund logic on order cancellation
+- [x] Refund logic on order cancellation
 - [x] Add `payment-topics` constant and `PaymentProcessedEvent` to `common-libs`
 - [x] Dockerfile + docker-compose entry
 - [x] `application.yaml`
@@ -127,7 +127,7 @@ The full order flow following the same Saga pattern as user registration:
 - [x] `POST /api/v1/orders` → order saved as PENDING → `OrderCreatedEvent` on Kafka
 - [x] payment-service consumes event → processes payment → publishes `PaymentProcessedEvent`
 - [x] order-service consumes payment result → updates order to PAID or FAILED
-- [ ] Compensation logic: if payment fails → cancel order, release reserved stock
+- [x] Compensation logic: if payment fails → cancel order, release reserved stock
 
 ### 5. Miscellaneous
 - [x] Add gateway routes for product-service and payment-service

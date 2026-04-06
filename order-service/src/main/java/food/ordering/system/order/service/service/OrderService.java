@@ -1,6 +1,7 @@
 package food.ordering.system.order.service.service;
 
 import food.ordering.system.common.libs.records.OrderCreatedEvent;
+import food.ordering.system.common.libs.records.PaymentProcessedEvent;
 import food.ordering.system.order.service.entity.Order;
 import food.ordering.system.order.service.enums.OrderStatus;
 import food.ordering.system.order.service.record.CreateOrderDto;
@@ -77,12 +78,17 @@ public class OrderService {
     }
 
     @KafkaListener(topics = ORDER_CONFIRMATION_TOPIC, groupId = ORDER_GROUP)
-    public void confirmOrder(String orderId) {
-        UUID id = UUID.fromString(orderId);
-        orderRepository.findById(id).ifPresent(order -> {
-            order.setStatus(OrderStatus.PAID);
-            orderRepository.save(order);
-            log.info("SAGA DONE: Order {} is PAID!", id);
+    public void confirmOrder(PaymentProcessedEvent event) {
+        orderRepository.findById(event.orderId()).ifPresent(order -> {
+            if ("SUCCESS".equals(event.status())) {
+                order.setStatus(OrderStatus.PAID);
+                orderRepository.save(order);
+                log.info("SAGA DONE: Order {} is PAID", event.orderId());
+            } else {
+                order.setStatus(OrderStatus.FAILED);
+                orderRepository.save(order);
+                log.warn("SAGA COMPENSATION: Order {} FAILED — payment status={}", event.orderId(), event.status());
+            }
         });
     }
 
