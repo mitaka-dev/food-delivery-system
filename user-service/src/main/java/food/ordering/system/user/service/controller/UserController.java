@@ -2,11 +2,16 @@ package food.ordering.system.user.service.controller;
 
 import food.ordering.system.user.service.record.UserRegistrationDto;
 import food.ordering.system.user.service.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+@Tag(name = "Users", description = "User registration")
 @RestController
 @RequestMapping("/api/v1/users")
 public class UserController {
@@ -19,6 +24,15 @@ public class UserController {
         this.userService = userService;
     }
 
+    @Operation(
+            summary = "Register user",
+            description = "Creates a user with status PENDING and publishes a UserCreatedEvent to Kafka. " +
+                          "The user becomes ACTIVE after analytics-service confirms via the Saga."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Registration accepted, user is PENDING"),
+            @ApiResponse(responseCode = "400", description = "Invalid request body")
+    })
     @PostMapping
     public ResponseEntity<String> register(@RequestBody UserRegistrationDto dto) {
         log.info("Registration request received for username='{}', role={}", dto.username(), dto.role());

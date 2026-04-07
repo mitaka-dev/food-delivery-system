@@ -19,6 +19,16 @@ Payment Service   (8084)  ──── Kafka consumer only, no HTTP
 
 All HTTP traffic must go through the **Gateway on port 8080**. Direct service ports are internal.
 
+## API Documentation (Swagger UI)
+
+| Service | URL |
+|---------|-----|
+| User Service | http://localhost:8081/swagger-ui.html |
+| Order Service | http://localhost:8083/swagger-ui.html |
+| Product Service | http://localhost:8085/swagger-ui.html |
+
+Raw OpenAPI specs available at `/v3/api-docs` on each service port.
+
 ## Services
 
 ### Gateway Service — Port 8080
@@ -343,6 +353,25 @@ Client          Gateway       Order-Service      Payment-Service     Product-Ser
   │                               │ update Order(PAID)│
 
 > **Note:** The order Saga currently handles only the happy path. Compensation logic (payment failure → cancel order, release reserved stock) is planned but not yet implemented.
+
+## Developer Skills (Claude Code)
+
+Project-scoped Claude Code skills live in `.claude/skills/`. They are available as slash commands when working in this repo with Claude Code.
+
+| Skill | Trigger | Type | What it does |
+|-------|---------|------|--------------|
+| `/health` | Manual or auto | Read-only | Curls all 6 actuator endpoints and prints a UP/DOWN status table |
+| `/plan-session` | Manual or auto | Read-only | Reads `PLAN.md` and gives a session briefing: done, pending, suggested next steps |
+| `/logs [service]` | Manual or auto | Read-only | No arg: tails all microservices. With arg: `docker compose logs -f <service>` |
+| `/start` | Manual only | Side effects | Runs `./start.sh`, then verifies all services and prints access URLs |
+| `/saga-test` | Manual only | Side effects | End-to-end Saga test: register → login → happy-path order (PAID) + failure-path order (FAILED) |
+| `/commit` | Manual only | Side effects | Stages changes, generates a conventional commit message, commits and pushes to `origin/main` |
+
+**Manual-only** skills (`/start`, `/saga-test`, `/commit`) require you to invoke them explicitly — Claude will not run them automatically because they have side effects.
+
+**Auto-triggerable** skills (`/health`, `/plan-session`, `/logs`) can also be invoked by Claude when the context matches their description (e.g. Claude may run `/plan-session` automatically at the start of a dev session).
+
+---
 
 ## Consumer Groups
 

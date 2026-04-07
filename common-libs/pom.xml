@@ -6,12 +6,12 @@
 	<parent>
 		<groupId>food.ordering.system</groupId>
 		<artifactId>food-ordering-system-parent</artifactId>
-		<version>1.0-SNAPSHOT</version>
+		<version>1.0.0</version>
 		<relativePath>../pom.xml</relativePath>
 	</parent>
 
 	<artifactId>common-libs</artifactId>
-	<version>1.0</version>
+	<version>1.0.0</version>
 	<name>common-libs</name>
 	<description>Common Libs</description>
 

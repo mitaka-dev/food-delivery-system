@@ -56,8 +56,9 @@ public class SecurityConfig {
                 // Stateless — no HTTP session, every request must carry a JWT
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // Public: register + all auth endpoints (login, refresh, logout)
-                        .requestMatchers("/api/v1/users", "/api/v1/auth/**").permitAll()
+                        // Public: register + all auth endpoints (login, refresh, logout) + API docs
+                        .requestMatchers("/api/v1/users", "/api/v1/auth/**",
+                                "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         // Everything else requires a valid JWT
                         .anyRequest().authenticated()
                 )

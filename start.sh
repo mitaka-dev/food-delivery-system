@@ -87,6 +87,9 @@ JARS=(
   "user-service/target"
   "analytics-service/target"
   "gateway-service/target"
+  "order-service/target"
+  "payment-service/target"
+  "product-service/target"
 )
 
 needs_build() {
