@@ -133,7 +133,7 @@ The full order flow following the same Saga pattern as user registration:
 - [x] Add gateway routes for product-service and payment-service
 - [ ] Integration tests between services
 - [ ] Reduce trace sampling rate from 100% for production readiness
-- [ ] Grafana dashboard panels for order/payment metrics
+- [x] Grafana dashboard panels for order/payment metrics
 - [ ] HTTPS / TLS termination — add nginx or Traefik as a reverse proxy in front of the gateway; internal Docker traffic stays HTTP, only the public edge is HTTPS (self-signed cert for dev, real cert for production)
 
 ---

@@ -40,3 +40,4 @@ build/
 
 ### Secrets — never commit these ###
 .env
+.claude/settings.local.json

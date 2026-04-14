@@ -32,7 +32,8 @@ Client → Gateway (8080) → Order Service (8083)
 - **Spring WebFlux** — gateway and analytics (reactive)
 - **Spring MVC** — user-service, order-service, product-service, payment-service (imperative)
 - **OpenTelemetry + Micrometer → Tempo** — distributed tracing
-- **Loki + Grafana** — log aggregation and dashboards
+- **Prometheus** — metrics scraping from all services (`/actuator/prometheus`, port 9090)
+- **Loki + Grafana** — log aggregation and pre-provisioned dashboards
 
 ## Startup
 
@@ -115,11 +116,18 @@ Client → Gateway (8080) → Order Service (8083)
 - Databases: `user_db`, `order_db`, `payment_db` — created by `init-db/init.sh`
 
 ## Observability
-- Grafana: http://localhost:3000
+- Grafana: http://localhost:3000 — "Food Ordering System" dashboard auto-provisioned on startup
+- Prometheus: http://localhost:9090 — scrapes all 6 services every 15s
 - Tempo (traces): http://localhost:3200
 - Loki (logs): http://localhost:3100
 - Zipkin receiver (for OTel export): http://localhost:9411
-- Actuator: `/actuator/health`, `/actuator/metrics`, `/actuator/prometheus` (gateway)
+- Actuator: `/actuator/health`, `/actuator/metrics`, `/actuator/prometheus` (all services)
+
+**Custom business metrics (Micrometer counters):**
+- `orders_created_total`, `orders_confirmed_total`, `orders_failed_total` — order-service
+- `payments_processed_total{status="SUCCESS|FAILED"}` — payment-service
+
+**Grafana provisioning files:** `grafana/provisioning/` (auto-loaded by docker-compose volume mount)
 
 ## Important Notes
 - Eureka is **disabled** — all services use hardcoded Docker hostnames (e.g., `kafka:29092`, `redis-cache:6379`)

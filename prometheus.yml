@@ -1,0 +1,34 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: gateway-service
+    static_configs:
+      - targets: ['gateway-service:8080']
+    metrics_path: /actuator/prometheus
+
+  - job_name: user-service
+    static_configs:
+      - targets: ['user-service:8081']
+    metrics_path: /actuator/prometheus
+
+  - job_name: analytics-service
+    static_configs:
+      - targets: ['analytics-service:8082']
+    metrics_path: /actuator/prometheus
+
+  - job_name: order-service
+    static_configs:
+      - targets: ['order-service:8083']
+    metrics_path: /actuator/prometheus
+
+  - job_name: payment-service
+    static_configs:
+      - targets: ['payment-service:8084']
+    metrics_path: /actuator/prometheus
+
+  - job_name: product-service
+    static_configs:
+      - targets: ['product-service:8085']
+    metrics_path: /actuator/prometheus

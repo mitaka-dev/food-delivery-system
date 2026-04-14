@@ -58,7 +58,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Public: register + all auth endpoints (login, refresh, logout) + API docs
                         .requestMatchers("/api/v1/users", "/api/v1/auth/**",
-                                "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                                "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html",
+                                "/actuator/health", "/actuator/info").permitAll()
                         // Everything else requires a valid JWT
                         .anyRequest().authenticated()
                 )

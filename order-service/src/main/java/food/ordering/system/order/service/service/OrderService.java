@@ -7,6 +7,8 @@ import food.ordering.system.order.service.enums.OrderStatus;
 import food.ordering.system.order.service.record.CreateOrderDto;
 import food.ordering.system.order.service.record.OrderResponseDto;
 import food.ordering.system.order.service.repository.OrderRepository;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,11 +31,24 @@ public class OrderService {
 
     private final OrderRepository orderRepository;
     private final KafkaTemplate<String, OrderCreatedEvent> kafkaTemplate;
+    private final Counter ordersCreatedCounter;
+    private final Counter ordersConfirmedCounter;
+    private final Counter ordersFailedCounter;
 
     public OrderService(OrderRepository orderRepository,
-                        KafkaTemplate<String, OrderCreatedEvent> kafkaTemplate) {
+                        KafkaTemplate<String, OrderCreatedEvent> kafkaTemplate,
+                        MeterRegistry meterRegistry) {
         this.orderRepository = orderRepository;
         this.kafkaTemplate = kafkaTemplate;
+        this.ordersCreatedCounter = Counter.builder("orders.created")
+                .description("Total number of orders placed")
+                .register(meterRegistry);
+        this.ordersConfirmedCounter = Counter.builder("orders.confirmed")
+                .description("Total number of orders confirmed (PAID)")
+                .register(meterRegistry);
+        this.ordersFailedCounter = Counter.builder("orders.failed")
+                .description("Total number of orders failed")
+                .register(meterRegistry);
     }
 
     @Transactional
@@ -56,6 +71,7 @@ public class OrderService {
         );
         log.info("Sending order creation event to Kafka: orderId={}, items={}", order.getId(), dto.items().size());
         kafkaTemplate.send(ORDER_TOPIC, order.getId().toString(), event);
+        ordersCreatedCounter.increment();
 
         return toDto(order);
     }
@@ -83,10 +99,12 @@ public class OrderService {
             if ("SUCCESS".equals(event.status())) {
                 order.setStatus(OrderStatus.PAID);
                 orderRepository.save(order);
+                ordersConfirmedCounter.increment();
                 log.info("SAGA DONE: Order {} is PAID", event.orderId());
             } else {
                 order.setStatus(OrderStatus.FAILED);
                 orderRepository.save(order);
+                ordersFailedCounter.increment();
                 log.warn("SAGA COMPENSATION: Order {} FAILED — payment status={}", event.orderId(), event.status());
             }
         });

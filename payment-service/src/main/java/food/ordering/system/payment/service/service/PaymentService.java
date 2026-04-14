@@ -5,6 +5,7 @@ import food.ordering.system.common.libs.records.PaymentProcessedEvent;
 import food.ordering.system.payment.service.entity.Payment;
 import food.ordering.system.payment.service.enums.PaymentStatus;
 import food.ordering.system.payment.service.repository.PaymentRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -24,11 +25,14 @@ public class PaymentService {
 
     private final PaymentRepository paymentRepository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final MeterRegistry meterRegistry;
 
     public PaymentService(PaymentRepository paymentRepository,
-                          KafkaTemplate<String, Object> kafkaTemplate) {
+                          KafkaTemplate<String, Object> kafkaTemplate,
+                          MeterRegistry meterRegistry) {
         this.paymentRepository = paymentRepository;
         this.kafkaTemplate = kafkaTemplate;
+        this.meterRegistry = meterRegistry;
     }
 
     @KafkaListener(topics = ORDER_TOPIC, groupId = PAYMENT_GROUP)
@@ -74,6 +78,7 @@ public class PaymentService {
         // Notify product-service (and any future consumers) — carries items for stock rollback
         kafkaTemplate.send(PAYMENT_TOPIC, event.orderId().toString(), processedEvent);
 
+        meterRegistry.counter("payments.processed", "status", payment.getStatus().name()).increment();
         log.info("SAGA: Published PaymentProcessedEvent status={} for orderId={}", payment.getStatus().name(), event.orderId());
     }
 }
