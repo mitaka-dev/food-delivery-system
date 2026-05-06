@@ -48,13 +48,13 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
 
 ## Project Context
-> **Architecture, services, tech stack, Kafka topics, gateway routes, JWT design, database, and observability** are in `PROJECT.md`. Read it at session start or when working on infrastructure/config changes.
+> **Architecture, services, tech stack, Kafka topics, gateway routes, JWT design, database, and observability** are in `docs/PROJECT.md`. Read it at session start or when working on infrastructure/config changes.
 
 ## API Guidelines
-> **Before touching any HTTP controller, DTO, or gateway route — read `API_PRINCIPLES.md`.**
-> It is the rubric every HTTP change is reviewed against. Current gap status is in `API_AUDIT.md`; remediation tasks are tracked in `PLAN.md` under "API Hardening".
+> **Before touching any HTTP controller, DTO, or gateway route — read `docs/API_PRINCIPLES.md`.**
+> It is the rubric every HTTP change is reviewed against. Current gap status is in `docs/API_AUDIT.md`; remediation tasks are tracked in `docs/PLAN.md` under "API Hardening".
 
 ## Project Plan & Progress
-> **Session start:** Read `PLAN.md` in the project root to know what is done and what is left.
-> **During the session:** Update `PLAN.md` checkboxes as features are completed.
-> **Session end:** When the user says anything like "we're done", "goodbye", "end session", or "wrap up" — review and update both `PLAN.md` and `CLAUDE.md` before responding, then confirm both have been updated.
+> **Session start:** Read `docs/PLAN.md` to know what is done and what is left.
+> **During the session:** Update `docs/PLAN.md` checkboxes as features are completed.
+> **Session end:** When the user says anything like "we're done", "goodbye", "end session", or "wrap up" — review and update both `docs/PLAN.md` and `CLAUDE.md` before responding, then confirm both have been updated.
