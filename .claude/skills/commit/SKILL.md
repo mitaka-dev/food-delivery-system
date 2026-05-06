@@ -30,24 +30,12 @@ Commit and push all current changes to `origin/main`.
    - `refactor:` — code restructure with no behaviour change
    - `test:` — adding or updating tests
 
-   Write a concise subject line (≤72 chars). Add a body only if the change needs context that isn't obvious from the diff. Always append the Co-Authored-By trailer.
+   Write a concise subject line (≤72 chars). Add a body only if the change needs context that isn't obvious from the diff. Dont append the Co-Authored-By trailer.
 
 4. **Commit:**
    ```bash
    git commit -m "$(cat <<'EOF'
    <message here>
-
-   Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
    EOF
    )"
-   ```
-
-5. **Push:**
-   ```bash
-   git push origin main
-   ```
-
-6. **Confirm** by printing the commit SHA and a one-line summary:
-   ```bash
-   git log --oneline -1
    ```
