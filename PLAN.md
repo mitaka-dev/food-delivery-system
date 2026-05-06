@@ -131,21 +131,13 @@ The full order flow following the same Saga pattern as user registration:
 
 ### 5. Miscellaneous
 - [x] Add gateway routes for product-service and payment-service
-- [ ] Integration tests between services
-- [ ] Reduce trace sampling rate from 100% for production readiness
 - [x] Grafana dashboard panels for order/payment metrics
-- [ ] HTTPS / TLS termination — add nginx or Traefik as a reverse proxy in front of the gateway; internal Docker traffic stays HTTP, only the public edge is HTTPS (self-signed cert for dev, real cert for production)
 
----
+## API Hardening
 
-## Suggested Build Order
+> **What this is.** A concrete execution plan derived from `API_AUDIT.md` (2026-04-17). Each task tells you *why* it matters, *where* to make the change, *what* the code should look like, and *how* you'll know it's done. Every task references a principle in `API_PRINCIPLES.md` — read the rubric first if any "why" is unclear.
 
-```
-1. order-service (entity, endpoints, Kafka producer)
-2. common-libs updates (OrderCreatedEvent, order-topics)
-3. payment-service (Kafka consumer, payment logic, PaymentProcessedEvent)
-4. Order Saga wiring (order ← payment confirmation)
-5. product-service (catalog + stock reservation)
-6. Gateway routes for new services
-7. Integration tests
-```
+### Quick reference
+- **Rubric:** `API_PRINCIPLES.md` — the 12 principles with project-specific "How we apply it" bullets.
+- **Snapshot:** `API_AUDIT.md` — service × principle matrix showing the gaps these tasks close.
+- **Reference implementation:** `product-service/src/main/java/food/ordering/system/product/service/exception/GlobalExceptionHandler.java` — copy its structure for other services.
