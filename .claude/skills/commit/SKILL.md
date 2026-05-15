@@ -1,6 +1,6 @@
 ---
 name: commit
-description: Stage all changes, generate a conventional commit message, commit, and push to origin/main
+description: Stage all changes, generate a conventional commit message, and commit. Use when the user wants to commit, save their changes, create a commit, or checkpoint their work.
 disable-model-invocation: true
 allowed-tools: Bash(git *)
 ---
@@ -20,6 +20,7 @@ Commit and push all current changes to `origin/main`.
    ```bash
    git add .
    git reset HEAD .env 2>/dev/null || true
+   git ls-files --cached '*.secret' '*.key' | xargs -r git reset HEAD -- 2>/dev/null || true
    ```
 
 3. **Generate a commit message** using [Conventional Commits](https://www.conventionalcommits.org/) format:

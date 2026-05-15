@@ -58,3 +58,26 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 > **Session start:** Read `docs/PLAN.md` to know what is done and what is left.
 > **During the session:** Update `docs/PLAN.md` checkboxes as features are completed.
 > **Session end:** When the user says anything like "we're done", "goodbye", "end session", or "wrap up" — review and update both `docs/PLAN.md` and `CLAUDE.md` before responding, then confirm both have been updated.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `./start.sh` | Full startup: generates secrets, builds all services, health-checks |
+| `./mvnw test` | Run all tests |
+| `./mvnw test -pl <service>` | Run tests for a single service (e.g. `-pl order-service`) |
+
+## Gotchas
+
+- `JWT_SECRET` env var must be set before starting gateway/user services (`start.sh` handles this automatically)
+- Payment simulation: any order amount > 500 → FAILED (intentional test behavior, not a bug)
+- `product-service` uses optimistic locking (`@Version`) — concurrent stock updates may throw `OptimisticLockingFailureException`
+- Kafka Saga ordering: `order-topics` → product-service + payment-service → `order-confirmation-topic` → order status update
+
+## Skills
+
+| Skill | When to use |
+|-------|-------------|
+| `/plan-session` | Session start — reads PLAN.md, shows what's done and what's next |
+| `/logs [service]` | Tail logs for a specific service |
+| `/health` | Check health of all running services without starting anything |

@@ -1,17 +1,27 @@
 ---
 name: start
-description: Start the Food Ordering System — build Docker images, start all services, wait for health checks
+description: Start the Food Ordering System — build, launch all services, and verify health. Use when the user wants to start, boot, spin up, launch, or run the system. Also handles --clean (fresh database) and --rebuild (force Maven rebuild) variants.
 disable-model-invocation: true
 allowed-tools: Bash
 ---
 
 Start the Food Ordering System by running the automated startup script, then verify all services are healthy.
 
+## Flags
+
+Pass these via `$ARGUMENTS` if the user requests them:
+
+| Flag | When to use |
+|------|-------------|
+| *(none)* | Normal start — skips build if JARs exist |
+| `--rebuild` | Force Maven rebuild even if JARs are up-to-date |
+| `--clean` | Wipe Docker volumes (fresh database) before starting |
+
 ## Steps
 
 1. Run the startup script from the project root:
    ```
-   ./start.sh
+   ./start.sh $ARGUMENTS
    ```
    This generates secrets if missing, builds JARs (skipping if up-to-date), starts Docker Compose, and waits for the gateway and user-service to be healthy.
 
