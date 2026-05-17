@@ -25,6 +25,7 @@
     <module>kitchen-service</module>
     <module>delivery-service</module>
     <module>review-service</module>
+    <module>promotion-service</module>
 </modules>
 
     <properties>

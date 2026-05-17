@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
       POSTGRES_DB: postgres
-      POSTGRES_MULTIPLE_DATABASES: user_db,order_db,payment_db,product_db
+      POSTGRES_MULTIPLE_DATABASES: user_db,order_db,payment_db,product_db,delivery_db,promotion_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Mount the file as a plain text file
@@ -185,6 +185,23 @@ services:
         condition: service_healthy
 
 # --- NEW SERVICES (uncomment to enable once implemented) ---
+#  promotion-service:
+#    build:
+#      context: .
+#      dockerfile: promotion-service/Dockerfile
+#      args:
+#        SERVICE_PATH: promotion-service
+#    container_name: promotion-service
+#    ports: ["8090:8090"]
+#    environment:
+#      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-db:5432/promotion_db
+#      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+#    depends_on:
+#      postgres:
+#        condition: service_healthy
+#      kafka:
+#        condition: service_healthy
+
 #  review-service:
 #    build:
 #      context: .

@@ -26,4 +26,6 @@ public class KafkaConstants {
 
     public static final String REVIEW_ORDER_TOPIC = "review-order-topic";
     public static final String REVIEW_GROUP = "review-group";
+
+    public static final String PROMOTION_GROUP = "promotion-group";
 }
