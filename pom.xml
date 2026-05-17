@@ -26,6 +26,7 @@
     <module>delivery-service</module>
     <module>review-service</module>
     <module>promotion-service</module>
+    <module>notification-service</module>
 </modules>
 
     <properties>

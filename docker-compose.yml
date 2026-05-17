@@ -251,6 +251,19 @@ services:
 #      kafka:
 #        condition: service_healthy
 
+#  notification-service:
+#    build:
+#      context: .
+#      dockerfile: notification-service/Dockerfile
+#      args:
+#        SERVICE_PATH: notification-service
+#    container_name: notification-service
+#    environment:
+#      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+#    depends_on:
+#      kafka:
+#        condition: service_healthy
+
 #  basket-service:
 #    build:
 #      context: .
