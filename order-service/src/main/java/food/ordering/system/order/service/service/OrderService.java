@@ -30,13 +30,13 @@ public class OrderService {
     private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 
     private final OrderRepository orderRepository;
-    private final KafkaTemplate<String, OrderCreatedEvent> kafkaTemplate;
+    private final KafkaTemplate<Object, Object> kafkaTemplate;
     private final Counter ordersCreatedCounter;
     private final Counter ordersConfirmedCounter;
     private final Counter ordersFailedCounter;
 
     public OrderService(OrderRepository orderRepository,
-                        KafkaTemplate<String, OrderCreatedEvent> kafkaTemplate,
+                        KafkaTemplate<Object, Object> kafkaTemplate,
                         MeterRegistry meterRegistry) {
         this.orderRepository = orderRepository;
         this.kafkaTemplate = kafkaTemplate;

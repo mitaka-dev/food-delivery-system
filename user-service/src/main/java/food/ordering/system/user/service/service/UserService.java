@@ -20,12 +20,12 @@ import static food.ordering.system.common.libs.constants.KafkaConstants.*;
 public class UserService {
 
     private final UserRepository userRepository;
-    private final KafkaTemplate<String, UserCreatedEvent> kafkaTemplate;
+    private final KafkaTemplate<Object, Object> kafkaTemplate;
     private final BCryptPasswordEncoder passwordEncoder;
     private static final Logger log = LoggerFactory.getLogger(UserService.class);
 
     public UserService(UserRepository userRepository,
-                       KafkaTemplate<String, UserCreatedEvent> kafkaTemplate,
+                       KafkaTemplate<Object, Object> kafkaTemplate,
                        BCryptPasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.kafkaTemplate = kafkaTemplate;

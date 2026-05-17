@@ -24,11 +24,11 @@ public class PaymentService {
     private static final Logger log = LoggerFactory.getLogger(PaymentService.class);
 
     private final PaymentRepository paymentRepository;
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final KafkaTemplate<Object, Object> kafkaTemplate;
     private final MeterRegistry meterRegistry;
 
     public PaymentService(PaymentRepository paymentRepository,
-                          KafkaTemplate<String, Object> kafkaTemplate,
+                          KafkaTemplate<Object, Object> kafkaTemplate,
                           MeterRegistry meterRegistry) {
         this.paymentRepository = paymentRepository;
         this.kafkaTemplate = kafkaTemplate;

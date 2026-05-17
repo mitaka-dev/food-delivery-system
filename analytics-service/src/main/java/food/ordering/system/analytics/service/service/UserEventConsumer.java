@@ -15,9 +15,9 @@ public class UserEventConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(UserEventConsumer.class);
     private final StringRedisTemplate redisTemplate;
-    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final KafkaTemplate<Object, Object> kafkaTemplate;
 
-    public UserEventConsumer(StringRedisTemplate redisTemplate, KafkaTemplate<String, String> kafkaTemplate) {
+    public UserEventConsumer(StringRedisTemplate redisTemplate, KafkaTemplate<Object, Object> kafkaTemplate) {
         this.redisTemplate = redisTemplate;
         this.kafkaTemplate = kafkaTemplate;
     }
