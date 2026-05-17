@@ -35,6 +35,10 @@ build/
 ### Mac OS ###
 .DS_Store
 
+### Python bytecode ###
+__pycache__/
+*.pyc
+
 ### Secrets — never commit these ###
 .env
 .claude/settings.local.json
