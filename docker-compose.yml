@@ -184,24 +184,5 @@ services:
       kafka:
         condition: service_healthy
 
-  gateway-service:
-    build:
-      context: .
-      dockerfile: gateway-service/Dockerfile
-      args:
-        SERVICE_PATH: gateway-service
-    container_name: gateway-service
-    ports: ["8080:8080"]
-    environment:
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      SPRING_DATA_REDIS_HOST: redis-cache
-      SPRING_DATA_REDIS_PORT: 6379
-      JWT_SECRET: ${JWT_SECRET}
-    depends_on:
-      kafka:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
 volumes:
   postgres_data:

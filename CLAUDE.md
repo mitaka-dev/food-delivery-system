@@ -48,10 +48,10 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
 
 ## Project Context
-> **Architecture, services, tech stack, Kafka topics, gateway routes, JWT design, database, and observability** are in `docs/PROJECT.md`. Read it at session start or when working on infrastructure/config changes.
+> **Architecture, services, tech stack, Kafka topics, JWT design, database, and observability** are in `docs/PROJECT.md`. Read it at session start or when working on infrastructure/config changes.
 
 ## API Guidelines
-> **Before touching any HTTP controller, DTO, or gateway route — read `docs/API_PRINCIPLES.md`.**
+> **Before touching any HTTP controller or DTO — read `docs/API_PRINCIPLES.md`.**
 > It is the rubric every HTTP change is reviewed against. Current gap status is in `docs/API_AUDIT.md`; remediation tasks are tracked in `docs/PLAN.md` under "API Hardening".
 
 ## Project Plan & Progress
@@ -69,7 +69,8 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ## Gotchas
 
-- `JWT_SECRET` env var must be set before starting gateway/user services (`start.sh` handles this automatically)
+- `JWT_SECRET` env var must be set before starting user-service (`start.sh` handles this automatically)
+- Services are accessed directly by port — no API gateway locally. In production, AWS API Gateway handles routing (see `docs/plan/architecture.md`)
 - Payment simulation: any order amount > 500 → FAILED (intentional test behavior, not a bug)
 - `product-service` uses optimistic locking (`@Version`) — concurrent stock updates may throw `OptimisticLockingFailureException`
 - Kafka Saga ordering: `order-topics` → product-service + payment-service → `order-confirmation-topic` → order status update

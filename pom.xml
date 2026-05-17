@@ -16,7 +16,6 @@
 
     <packaging>pom</packaging> <modules>
     <module>common-libs</module>
-    <module>gateway-service</module>
     <module>user-service</module>
     <module>order-service</module>
     <module>product-service</module>

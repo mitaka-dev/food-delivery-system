@@ -86,7 +86,6 @@ step "Building services..."
 JARS=(
   "user-service/target"
   "analytics-service/target"
-  "gateway-service/target"
   "order-service/target"
   "payment-service/target"
   "product-service/target"
@@ -147,8 +146,11 @@ wait_for() {
   return 1
 }
 
-wait_for "gateway-service"   "http://localhost:8080/actuator/health"
 wait_for "user-service"      "http://localhost:8081/actuator/health"
+wait_for "analytics-service" "http://localhost:8082/actuator/health"
+wait_for "order-service"     "http://localhost:8083/actuator/health"
+wait_for "payment-service"   "http://localhost:8084/actuator/health"
+wait_for "product-service"   "http://localhost:8085/actuator/health"
 
 # ════════════════════════════════════════════════════════════
 #  Done
@@ -158,11 +160,17 @@ echo -e "${GREEN}═════════════════════
 echo -e "${GREEN}  Food Ordering System is running!${NC}"
 echo -e "${GREEN}════════════════════════════════════════${NC}"
 echo ""
-echo "  Gateway:   http://localhost:8080"
+echo "  Services (direct access — no gateway):"
+echo "    user-service:      http://localhost:8081"
+echo "    analytics-service: http://localhost:8082"
+echo "    order-service:     http://localhost:8083"
+echo "    payment-service:   http://localhost:8084"
+echo "    product-service:   http://localhost:8085"
+echo ""
 echo "  Grafana:   http://localhost:3000"
 echo ""
 echo "  Quick test:"
-echo "    curl -s -X POST http://localhost:8080/api/v1/users \\"
+echo "    curl -s -X POST http://localhost:8081/api/v1/users \\"
 echo "      -H 'Content-Type: application/json' \\"
 echo "      -d '{\"username\":\"john\",\"password\":\"secret123\",\"email\":\"john@test.com\",\"role\":\"USER\"}'"
 echo ""

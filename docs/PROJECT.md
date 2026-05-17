@@ -2,8 +2,12 @@
 Project-specific context for the Food Ordering System.
 
 ## Architecture
-Client → Gateway (8080) → Order Service (8083)
-                              ↓ Kafka (order-topics)
+Client → user-service (8081)   — auth / registration
+Client → order-service (8083)  — order CRUD (Bearer token)
+Client → product-service (8085) — catalog CRUD (Bearer token)
+
+Order flow:
+order-service → Kafka (order-topics)
                     ┌─────────┴──────────┐
              product-service        payment-service
              (stock reserve)        (process payment)
@@ -12,9 +16,10 @@ Client → Gateway (8080) → Order Service (8083)
                                                        ↓
                                           Order Service (PENDING → PAID)
 
+**Note:** In production, all traffic routes through AWS API Gateway (see `docs/plan/architecture.md` and Terraform Phase 0).
+
 ### Services
 | Service | Port | Responsibility |
-| `gateway-service` | 8080 | API routing, JWT validation, rate limiting (IP-based, Redis) |
 | `user-service` | 8081 | User registration + auth, Kafka producer + consumer |
 | `analytics-service` | 8082 | Consumes user events, updates Redis counters, triggers Saga confirmation |
 | `order-service` | 8083 | Order CRUD, Kafka producer + consumer |
@@ -23,12 +28,11 @@ Client → Gateway (8080) → Order Service (8083)
 | `common-libs` | — | Shared DTOs, enums, Kafka constants |
 
 ## Tech Stack
-- **Java 25**, **Spring Boot 3.5.11**, **Spring Cloud 2025.1.1**
+- **Java 25**, **Spring Boot 4.0.6**
 - **PostgreSQL 16** — user_db, order_db, payment_db
 - **Apache Kafka 7.5.0** (Confluent CP) — async Saga messaging
-- **Redis (Alpine)** — refresh token storage, gateway rate limiting, analytics counters
-- **Spring WebFlux** — gateway and analytics (reactive)
-- **Spring MVC** — user-service, order-service, product-service, payment-service (imperative)
+- **Redis (Alpine)** — refresh token storage, analytics counters
+- **Spring MVC** — all services (imperative)
 - **OpenTelemetry + Micrometer → Tempo** — distributed tracing
 - **Prometheus** — metrics scraping from all services (`/actuator/prometheus`, port 9090)
 - **Loki + Grafana** — log aggregation and pre-provisioned dashboards
@@ -43,19 +47,14 @@ Client → Gateway (8080) → Order Service (8083)
 ./generate-secrets.sh
 ```
 
-**Note:** `JWT_SECRET` must be set in the environment before starting gateway and user services. `start.sh` handles this automatically.
+**Note:** `JWT_SECRET` must be set in the environment before starting user-service. `start.sh` handles this automatically.
 
-## JWT Architecture (Two-Layer Validation)
+## JWT Architecture
 
-**Gateway Layer** (`JwtAuthenticationFilter` — GlobalFilter, order -1):
-- Validates every request except public paths (`/api/v1/users`, `/api/v1/auth/**`, `/actuator`)
-- Parses JWT, checks expiration and `type == "access"`
-- Injects headers downstream: `X-User-Name: {username}`, `X-User-Role: {role}`
-- Returns 401 directly; downstream services never see invalid tokens
-
-**Service Layer** (`JwtAuthenticationFilter` — OncePerRequestFilter in user-service):
-- Re-validates the Bearer token, loads UserDetails from DB (including `status == ACTIVE` check)
-- Sets Spring Security context; continues silently if no token (for public endpoints)
+**user-service** (`JwtAuthenticationFilter` — OncePerRequestFilter):
+- Validates Bearer token on protected endpoints; passes through public paths (`/api/v1/users`, `/api/v1/auth/**`, `/actuator`)
+- Parses JWT, checks expiration and `type == "access"`, loads UserDetails from DB (`status == ACTIVE`)
+- Sets Spring Security context; returns 401 on invalid token
 
 **JWT Claims Structure:**
 ```json
@@ -64,8 +63,6 @@ Client → Gateway (8080) → Order Service (8083)
 - Access token: 15 min; Refresh token: 7 days
 - Refresh tokens stored in Redis: key = `refresh_token:{username}`, TTL = 7 days
 - Logout deletes the Redis key, revoking the refresh token
-
-**Downstream services receive user identity via headers, not by re-parsing JWT.**
 
 **User Registration Saga:**
 1. `POST /api/v1/users` → User saved as `PENDING` → `UserCreatedEvent` → `user-topics`
@@ -92,14 +89,13 @@ Client → Gateway (8080) → Order Service (8083)
 | `PAYMENT_GROUP` | `payment-group` | |
 | `PRODUCT_GROUP` | `product-group` | |
 
-## Gateway Routes
-| Route | Path | Target | Auth | Rate Limit |
-| auth-route | `/api/v1/auth/**` | user-service:8081 | public | — |
-| user-registration-route | `/api/v1/users` | user-service:8081 | public | 5 req/s, burst 10 |
-| order-service-route | `/api/v1/orders/**` | order-service:8083 | JWT required | 10 req/s, burst 20 |
-| product-service-route | `/api/v1/products/**` | product-service:8085 | JWT required | 10 req/s, burst 20 |
-
-**Note:** payment-service has no gateway route — it is fully internal/event-driven.
+## Service Endpoints (Local)
+| Service | Port | Public Paths | Auth Required |
+| `user-service` | 8081 | `/api/v1/users`, `/api/v1/auth/**` | `/api/v1/auth/logout`, `/actuator` |
+| `order-service` | 8083 | — | `/api/v1/orders/**` |
+| `product-service` | 8085 | — | `/api/v1/products/**` |
+| `analytics-service` | 8082 | `/actuator` | — |
+| `payment-service` | 8084 | — | internal/event-driven only |
 
 ## Key Data Notes
 - `Order.items` is stored as plain `TEXT` (no normalization); expected to be JSON string from client
