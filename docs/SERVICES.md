@@ -9,13 +9,19 @@ Client
   ▼
 Gateway (8080)  ──── validates JWT, rate-limits, injects X-User-Name / X-User-Role headers
   │
-  ├──▶ User Service    (8081)  ──── registration, authentication
-  ├──▶ Order Service   (8083)  ──── order CRUD + Saga producer
-  ├──▶ Product Service (8085)  ──── catalog, stock reservation
-  └──▶ (payment-service not exposed via gateway — event-driven only)
+  ├──▶ User Service       (8081)  ──── registration, authentication
+  ├──▶ Order Service      (8083)  ──── order CRUD + Saga producer
+  ├──▶ Product Service    (8085)  ──── catalog, stock reservation
+  ├──▶ Basket Service     (8086)  ──── shopping basket (Redis)
+  ├──▶ Kitchen Service    (8087)  ──── kitchen ticket management
+  ├──▶ Delivery Service   (8088)  ──── delivery tracking
+  ├──▶ Review Service     (8089)  ──── order reviews (DynamoDB)
+  └──▶ Promotion Service  (8090)  ──── promotion codes
 
-Analytics Service (8082)  ──── Kafka consumer only, no HTTP
-Payment Service   (8084)  ──── Kafka consumer only, no HTTP
+Event-driven only (no HTTP):
+  Analytics Service    (8082)  ──── Redis counters, user Saga confirmation
+  Payment Service      (8084)  ──── payment processing
+  Notification Service  (—)    ──── fan-out to order/payment/delivery events
 
 All HTTP traffic must go through the **Gateway on port 8080**. Direct service ports are internal.
 
@@ -274,6 +280,91 @@ Event-driven only — no HTTP endpoints. Consumes `order-topics`, processes paym
 
 ---
 
+### Basket Service — Port 8086
+
+Redis-backed shopping basket. All endpoints require a valid JWT.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/v1/basket` | Get current user's basket |
+| `POST` | `/api/v1/basket/items` | Add item to basket |
+| `DELETE` | `/api/v1/basket/items/{productId}` | Remove specific item |
+| `DELETE` | `/api/v1/basket` | Clear entire basket |
+
+No Kafka integration — reads/writes Redis directly.
+
+---
+
+### Kitchen Service — Port 8087
+
+Manages kitchen tickets for incoming orders. Listens on `kitchen-order-topic`.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/v1/kitchen/tickets/{ticketId}` | Get ticket by ID |
+| `PUT` | `/api/v1/kitchen/tickets/{ticketId}/status` | Update ticket status |
+
+**Kafka listener:** `kitchen-order-topic` (group `kitchen-group`) — receives order-paid events, creates kitchen tickets.
+
+> Producer side not yet wired — `kitchen-order-topic` has no active publisher in the current codebase.
+
+---
+
+### Delivery Service — Port 8088
+
+Tracks delivery tasks from kitchen-ready to delivered. Listens on `delivery-order-topic`.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/v1/delivery/orders/{orderId}` | Get delivery status for an order |
+| `PUT` | `/api/v1/delivery/{deliveryId}/status` | Update delivery status |
+
+**Kafka listener:** `delivery-order-topic` (group `delivery-group`) — receives order-confirmed events.
+
+> Producer side not yet wired — `delivery-order-topic` has no active publisher in the current codebase.
+
+---
+
+### Review Service — Port 8089
+
+DynamoDB-backed post-delivery review system. Listens on `review-order-topic`.
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/v1/reviews` | Submit a review for a delivered order |
+| `GET` | `/api/v1/reviews/{reviewId}` | Get review by ID |
+| `GET` | `/api/v1/reviews/orders/{orderId}` | Get all reviews for an order |
+
+**Kafka listener:** `review-order-topic` (group `review-group`) — receives order-delivered events.
+
+> Producer side not yet wired — `review-order-topic` has no active publisher in the current codebase.
+
+---
+
+### Promotion Service — Port 8090
+
+Manages promotion codes. Listens on `user-topics` to issue welcome codes on new user registration.
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/v1/promotions` | Create a promotion code (ADMIN) |
+| `GET` | `/api/v1/promotions/{code}` | Look up a promotion code |
+
+**Kafka listener:** `user-topics` (group `promotion-group`) — receives `UserCreatedEvent`, issues welcome promotion codes.
+
+---
+
+### Notification Service — No HTTP
+
+Event-driven only — no HTTP endpoints. Fans out to multiple event streams for notification delivery.
+
+**Kafka listeners:**
+- `order-topics` (group `notification-group`) — order lifecycle events
+- `payment-topics` (group `notification-group`) — payment success/failure events
+- `delivery-order-topic` (group `notification-group`) — delivery status updates
+
+---
+
 ### Analytics Service — Port 8082
 
 Event-driven only — no HTTP endpoints. Maintains Redis counters for user statistics and triggers the user registration Saga.
@@ -289,11 +380,14 @@ Event-driven only — no HTTP endpoints. Maintains Redis counters for user stati
 
 | Topic | Producer | Consumer(s) | Message type |
 |-------|----------|-------------|--------------|
-| `user-topics` | user-service | analytics-service | `UserCreatedEvent` |
+| `user-topics` | user-service | analytics-service, promotion-service | `UserCreatedEvent` |
 | `user-confirmation-topic` | analytics-service | user-service | `String` ("SUCCESS") |
-| `order-topics` | order-service | payment-service, product-service | `OrderCreatedEvent` |
-| `order-confirmation-topic` | payment-service | order-service | `String` (orderId) |
-| `payment-topics` | payment-service | *(future consumers)* | `PaymentProcessedEvent` |
+| `order-topics` | order-service | payment-service, product-service, notification-service | `OrderCreatedEvent` |
+| `order-confirmation-topic` | payment-service | order-service | `PaymentProcessedEvent` |
+| `payment-topics` | payment-service | notification-service | `PaymentProcessedEvent` |
+| `kitchen-order-topic` | *(not yet wired)* | kitchen-service | order-paid event |
+| `delivery-order-topic` | *(not yet wired)* | delivery-service, notification-service | order-confirmed event |
+| `review-order-topic` | *(not yet wired)* | review-service | order-delivered event |
 
 ### Event schemas
 
@@ -360,16 +454,15 @@ Project-scoped Claude Code skills live in `.claude/skills/`. They are available 
 
 | Skill | Trigger | Type | What it does |
 |-------|---------|------|--------------|
-| `/health` | Manual or auto | Read-only | Curls all 6 actuator endpoints and prints a UP/DOWN status table |
-| `/plan-session` | Manual or auto | Read-only | Reads `PLAN.md` and gives a session briefing: done, pending, suggested next steps |
-| `/logs [service]` | Manual or auto | Read-only | No arg: tails all microservices. With arg: `docker compose logs -f <service>` |
+| `/health` | Manual or auto | Read-only | Curls all actuator endpoints and prints a UP/DOWN status table |
+| `/logs [service]` | Manual or auto | Read-only | No arg: lists services. With arg: `docker compose logs -f <service>` |
 | `/start` | Manual only | Side effects | Runs `./start.sh`, then verifies all services and prints access URLs |
 | `/saga-test` | Manual only | Side effects | End-to-end Saga test: register → login → happy-path order (PAID) + failure-path order (FAILED) |
-| `/commit` | Manual only | Side effects | Stages changes, generates a conventional commit message, commits and pushes to `origin/main` |
+| `/commit` | Manual only | Side effects | Stages changes, generates a conventional commit message, and commits (does not push) |
 
-**Manual-only** skills (`/start`, `/saga-test`, `/commit`) require you to invoke them explicitly — Claude will not run them automatically because they have side effects.
+**Session briefing** is handled automatically via a `SessionStart` hook that injects `docs/plan/STATUS.md` into Claude's context at the start of every session — no skill invocation needed.
 
-**Auto-triggerable** skills (`/health`, `/plan-session`, `/logs`) can also be invoked by Claude when the context matches their description (e.g. Claude may run `/plan-session` automatically at the start of a dev session).
+**Manual-only** skills require explicit invocation — Claude will not run them automatically because they have side effects.
 
 ---
 
@@ -382,3 +475,8 @@ Project-scoped Claude Code skills live in `.claude/skills/`. They are available 
 | `order-group` | order-service | `order-confirmation-topic` |
 | `payment-group` | payment-service | `order-topics` |
 | `product-group` | product-service | `order-topics` |
+| `kitchen-group` | kitchen-service | `kitchen-order-topic` |
+| `delivery-group` | delivery-service | `delivery-order-topic` |
+| `review-group` | review-service | `review-order-topic` |
+| `promotion-group` | promotion-service | `user-topics` |
+| `notification-group` | notification-service | `order-topics`, `payment-topics`, `delivery-order-topic` |

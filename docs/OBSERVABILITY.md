@@ -90,12 +90,17 @@ Each log stream is labeled with:
 
 | Service | File |
 |---------|------|
-| gateway-service | `gateway-service/src/main/resources/logback-spring.xml` |
 | user-service | `user-service/src/main/resources/logback-spring.xml` |
 | analytics-service | `analytics-service/src/main/resources/logback-spring.xml` |
 | order-service | `order-service/src/main/resources/logback-spring.xml` |
 | payment-service | `payment-service/src/main/resources/logback-spring.xml` |
 | product-service | `product-service/src/main/resources/logback-spring.xml` |
+| basket-service | `basket-service/src/main/resources/logback-spring.xml` |
+| kitchen-service | `kitchen-service/src/main/resources/logback-spring.xml` |
+| delivery-service | `delivery-service/src/main/resources/logback-spring.xml` |
+| review-service | `review-service/src/main/resources/logback-spring.xml` |
+| promotion-service | `promotion-service/src/main/resources/logback-spring.xml` |
+| notification-service | `notification-service/src/main/resources/logback-spring.xml` |
 
 ---
 
@@ -247,12 +252,17 @@ rate(kafka_consumer_fetch_manager_records_consumed_total[1m])
 
 | Service | Loki label | Traces | Actuator port |
 |---------|-----------|--------|---------------|
-| gateway-service | `app="gateway-service"` | ✓ | :8080/actuator |
 | user-service | `app="user-service"` | ✓ | :8081/actuator |
 | analytics-service | `app="analytics-service"` | ✓ | :8082/actuator |
 | order-service | `app="order-service"` | ✓ | :8083/actuator |
 | payment-service | `app="payment-service"` | ✓ | :8084/actuator |
 | product-service | `app="product-service"` | ✓ | :8085/actuator |
+| basket-service | `app="basket-service"` | ✓ | :8086/actuator |
+| kitchen-service | `app="kitchen-service"` | ✓ | :8087/actuator |
+| delivery-service | `app="delivery-service"` | ✓ | :8088/actuator |
+| review-service | `app="review-service"` | ✓ | :8089/actuator |
+| promotion-service | `app="promotion-service"` | ✓ | :8090/actuator |
+| notification-service | `app="notification-service"` | ✓ | — (no HTTP) |
 
 ---
 

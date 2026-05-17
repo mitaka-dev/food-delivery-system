@@ -52,12 +52,17 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ## API Guidelines
 > **Before touching any HTTP controller or DTO — read `docs/API_PRINCIPLES.md`.**
-> It is the rubric every HTTP change is reviewed against. Current gap status is in `docs/API_AUDIT.md`; remediation tasks are tracked in `docs/PLAN.md` under "API Hardening".
+> It is the rubric every HTTP change is reviewed against. Current gap status is in `docs/API_AUDIT.md`.
 
 ## Project Plan & Progress
-> **Session start:** Read `docs/PLAN.md` to know what is done and what is left.
-> **During the session:** Update `docs/PLAN.md` checkboxes as features are completed.
-> **Session end:** When the user says anything like "we're done", "goodbye", "end session", or "wrap up" — review and update both `docs/PLAN.md` and `CLAUDE.md` before responding, then confirm both have been updated.
+> The build plan lives in `docs/plan/` with these files:
+> - `docs/plan/PLAN.md` — entry point: how to use the plan, links to the two sub-documents
+> - `docs/plan/BUILD-PLAN.md` — the phased build steps with `- [ ]` / `- [x]` progress checkboxes
+> - `docs/plan/ARCHITECTURE.md` — reference architecture (sections 1–10)
+>
+> **Session start:** Read `docs/plan/PLAN.md` to orient, then `docs/plan/BUILD-PLAN.md` to find the next unchecked step.
+> **During the session:** Mark steps done in `docs/plan/BUILD-PLAN.md` by changing `- [ ]` to `- [x]` as each acceptance criteria is met.
+> **Session end:** When the user says anything like "we're done", "goodbye", "end session", or "wrap up" — update checkboxes in `docs/plan/BUILD-PLAN.md`, update `docs/plan/STATUS.md` to reflect current state and next step, and update `CLAUDE.md` if anything here has changed. Confirm all three have been updated.
 
 ## Commands
 
@@ -70,14 +75,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ## Gotchas
 
 - `JWT_SECRET` env var must be set before starting user-service (`start.sh` handles this automatically)
-- Services are accessed directly by port — no API gateway locally. In production, AWS API Gateway handles routing (see `docs/plan/architecture.md`)
+- Services are accessed directly by port — no API gateway locally. In production, AWS API Gateway handles routing (see `docs/plan/ARCHITECTURE.md`)
 - Payment simulation: any order amount > 500 → FAILED (intentional test behavior, not a bug)
 - `product-service` uses optimistic locking (`@Version`) — concurrent stock updates may throw `OptimisticLockingFailureException`
 - Kafka Saga ordering: `order-topics` → product-service + payment-service → `order-confirmation-topic` → order status update
-
-## Skills
-
-| Skill | When to use |
-|-------|-------------|
-| `/logs [service]` | Tail logs for a specific service |
-| `/health` | Check health of all running services without starting anything |

@@ -116,7 +116,7 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 
 ---
 
-# PART B — BUILD STEPS
+# BUILD STEPS
 
 > Each step below is sized for one Claude Pro session. Mark a step done by changing `- [ ]` to `- [x]`. Steps within a phase that have no dependency on each other can be parallelized across multiple sessions.
 

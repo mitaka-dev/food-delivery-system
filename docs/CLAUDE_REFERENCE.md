@@ -18,9 +18,11 @@
 │   │   ├── enforce-conventions
 │   │   ├── secret-scanner
 │   │   └── flyway-migration-safety
-│   └── pre-tool-use/
-│       ├── protect-production
-│       └── confirm-data-mutation
+│   ├── pre-tool-use/
+│   │   ├── protect-production
+│   │   └── confirm-data-mutation
+│   └── session-start/
+│       └── plan-briefing
 └── skills/
     ├── commit/
     ├── db-query/
@@ -293,6 +295,22 @@ Install gitleaks: https://github.com/gitleaks/gitleaks
 
 ---
 
+### Claude Code Session-start Hook
+
+Fires automatically when a Claude Code session begins. Outputs JSON with `hookSpecificOutput.additionalContext` to inject content into the model's context before the first message.
+
+#### `plan-briefing`
+
+**File:** `.claude/hooks/session-start/plan-briefing`
+**Language:** bash + python3
+**Trigger:** session start (automatic, no user action required)
+
+Reads `docs/plan/STATUS.md` and injects its contents into Claude's context as `additionalContext`. This gives Claude an instant briefing on current project state and next step without reading the large plan files.
+
+> Update `docs/plan/STATUS.md` at the end of every session to keep the briefing accurate.
+
+---
+
 ### Claude Code Pre-tool-use Hooks
 
 These fire inside Claude Code **before every Bash tool call**. Configured in `.claude/settings.json`.
@@ -364,12 +382,19 @@ Reports findings as **Critical** / **High** / **Low/Informational** with file:li
 ```json
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash -c 'cd \"$(git rev-parse --show-toplevel)\" && bash .claude/hooks/session-start/plan-briefing'", "statusMessage": "Loading project status..." }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "python3 .claude/hooks/pre-tool-use/protect-production" },
-          { "type": "command", "command": "python3 .claude/hooks/pre-tool-use/confirm-data-mutation" }
+          { "type": "command", "command": "bash -c 'cd \"$(git rev-parse --show-toplevel)\" && python3 .claude/hooks/pre-tool-use/protect-production'" },
+          { "type": "command", "command": "bash -c 'cd \"$(git rev-parse --show-toplevel)\" && python3 .claude/hooks/pre-tool-use/confirm-data-mutation'" }
         ]
       }
     ]
@@ -377,7 +402,7 @@ Reports findings as **Critical** / **High** / **Low/Informational** with file:li
 }
 ```
 
-Wires the two pre-tool-use hooks into Claude Code. Applies to every developer who opens this project.
+Wires the session-start briefing hook and the two pre-tool-use hooks into Claude Code. Applies to every developer who opens this project.
 
 ### `.claude/settings.local.json` — Personal/machine-level (gitignored)
 
@@ -431,10 +456,11 @@ This file is personal and not committed — each developer maintains their own c
 
 ## Hook Quick-Reference
 
-| Hook | Type | Trigger | Blocks |
+| Hook | Type | Trigger | Effect |
 |---|---|---|---|
-| `enforce-conventions` | Git pre-commit | Every commit | `latest` tags, AWS keys, Stripe keys, POM versions, Boot 3.x refs |
-| `secret-scanner` | Git pre-commit | Every commit | Secrets detected by gitleaks |
-| `flyway-migration-safety` | Git pre-commit | Staged `V*__*.sql` files | Immutable migration edits, dangerous DDL, version gaps |
-| `protect-production` | Claude pre-tool-use | Every Bash call | Dangerous AWS ops on production account |
-| `confirm-data-mutation` | Claude pre-tool-use | Every Bash call | DROP TABLE / TRUNCATE / DELETE without WHERE |
+| `plan-briefing` | Claude session-start | Session open | Injects `docs/plan/STATUS.md` into model context |
+| `enforce-conventions` | Git pre-commit | Every commit | Blocks `latest` tags, AWS keys, Stripe keys, POM versions, Boot 3.x refs |
+| `secret-scanner` | Git pre-commit | Every commit | Blocks secrets detected by gitleaks |
+| `flyway-migration-safety` | Git pre-commit | Staged `V*__*.sql` files | Blocks immutable migration edits, dangerous DDL, version gaps |
+| `protect-production` | Claude pre-tool-use | Every Bash call | Blocks dangerous AWS ops on production account |
+| `confirm-data-mutation` | Claude pre-tool-use | Every Bash call | Prompts before DROP TABLE / TRUNCATE / DELETE without WHERE |

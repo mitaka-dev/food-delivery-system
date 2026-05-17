@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+STATUS_FILE="docs/plan/STATUS.md"
+
+if [ ! -f "$STATUS_FILE" ]; then
+  exit 0
+fi
+
+python3 - <<'PYEOF'
+import json, pathlib
+
+content = pathlib.Path("docs/plan/STATUS.md").read_text()
+print(json.dumps({
+    "hookSpecificOutput": {
+        "hookEventName": "SessionStart",
+        "additionalContext": f"=== Project Status (docs/plan/STATUS.md) ===\n{content}"
+    }
+}))
+PYEOF

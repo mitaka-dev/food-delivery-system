@@ -1,16 +1,27 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel)\" && bash .claude/hooks/session-start/plan-briefing'",
+            "statusMessage": "Loading project status..."
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/pre-tool-use/protect-production"
+            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel)\" && python3 .claude/hooks/pre-tool-use/protect-production'"
           },
           {
             "type": "command",
-            "command": "python3 .claude/hooks/pre-tool-use/confirm-data-mutation"
+            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel)\" && python3 .claude/hooks/pre-tool-use/confirm-data-mutation'"
           }
         ]
       }

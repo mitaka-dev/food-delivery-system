@@ -22,8 +22,8 @@ Do not combine steps.
    - ArgoCD 2.10+ for GitOps deployment
    - AWS CodePipeline + CodeBuild + CodeCommit for CI/CD
 
-**Part A — Reference Documentation** - check "Reference Documentation.md" file
-**Part B — Build Steps** - check "Build Steps.md" file
+**Part A — Reference Documentation** - check `ARCHITECTURE.md`
+**Part B — Build Steps** - check `BUILD-PLAN.md`
 
 ---
 
@@ -31,6 +31,6 @@ Do not combine steps.
 
 These files define what skills and hooks need to be built. Consult them when starting a new phase to know what tooling should be created alongside the feature work.
 
-- **`docs/plan/skill-prompts.md`** — 20 skill specs, tiered by phase. Tier 1 (foundational) should exist before Phase 0. Tier 2 and Tier 3 skills are created at the start of the phase that needs them. Each entry is a copy-paste-ready prompt for skill-creator.
+- **`docs/plan/SKILL-PROMPTS.md`** — 20 skill specs, tiered by phase. Tier 1 (foundational) should exist before Phase 0. Tier 2 and Tier 3 skills are created at the start of the phase that needs them. Each entry is a copy-paste-ready prompt for skill-creator.
 
-- **`docs/plan/hook-specs.md`** — 21 hook specs across pre-commit, pre-tool-use, post-tool-use, session-start, and session-end lifecycle events. The "Recommended Build Order" section at the bottom prioritises which hooks to add first. Many hooks depend on infrastructure (Terraform, Schema Registry, gRPC) that only exists in later phases — check that dependency before implementing.
+- **`docs/plan/HOOK-SPECS.md`** — 21 hook specs across pre-commit, pre-tool-use, post-tool-use, session-start, and session-end lifecycle events. The "Recommended Build Order" section at the bottom prioritises which hooks to add first. Many hooks depend on infrastructure (Terraform, Schema Registry, gRPC) that only exists in later phases — check that dependency before implementing.

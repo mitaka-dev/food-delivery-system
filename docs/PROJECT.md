@@ -16,15 +16,22 @@ order-service → Kafka (order-topics)
                                                        ↓
                                           Order Service (PENDING → PAID)
 
-**Note:** In production, all traffic routes through AWS API Gateway (see `docs/plan/architecture.md` and Terraform Phase 0).
+**Note:** In production, all traffic routes through AWS API Gateway (see `docs/plan/ARCHITECTURE.md` and Terraform Phase 0).
 
 ### Services
 | Service | Port | Responsibility |
+|---|---|---|
 | `user-service` | 8081 | User registration + auth, Kafka producer + consumer |
 | `analytics-service` | 8082 | Consumes user events, updates Redis counters, triggers Saga confirmation |
 | `order-service` | 8083 | Order CRUD, Kafka producer + consumer |
 | `payment-service` | 8084 | Event-driven payment processor — consumes `order-topics`, publishes to `order-confirmation-topic` + `payment-topics` (no HTTP endpoints) |
 | `product-service` | 8085 | Product catalog CRUD, stock reservation via Kafka consumer on `order-topics`; optimistic locking (`@Version`) |
+| `basket-service` | 8086 | Redis-backed shopping basket — add/remove items, clear basket (no Kafka) |
+| `kitchen-service` | 8087 | Manages kitchen tickets — consumes order-paid events, exposes ticket status HTTP API |
+| `delivery-service` | 8088 | Tracks delivery tasks — consumes delivery events, exposes delivery status HTTP API |
+| `review-service` | 8089 | DynamoDB-backed order reviews — post-delivery review submission and retrieval |
+| `promotion-service` | 8090 | Manages promotion codes — listens for user-created events, exposes code lookup API |
+| `notification-service` | — | Event-driven only — no HTTP. Listens to order, payment, and delivery topics |
 | `common-libs` | — | Shared DTOs, enums, Kafka constants |
 
 ## Tech Stack
@@ -77,25 +84,45 @@ order-service → Kafka (order-topics)
 5. product-service consumes `PaymentProcessedEvent` from `payment-topics` → releases reserved stock on FAILED (compensation)
 
 ## Kafka Topics (defined in `common-libs/KafkaConstants`)
-| Constant | Value | Notes |
-| `USER_TOPIC` | `user-topics` | 3 partitions |
-| `USER_CONFIRMATION_TOPIC` | `user-confirmation-topic` | analytics → user-service |
-| `ORDER_TOPIC` | `order-topics` | 3 partitions |
-| `ORDER_CONFIRMATION_TOPIC` | `order-confirmation-topic` | payment → order-service; carries `PaymentProcessedEvent` |
-| `PAYMENT_TOPIC` | `payment-topics` | payment-service producer |
-| `ANALYTICS_GROUP` | `analytics-group` | |
-| `USER_GROUP` | `user-group` | |
-| `ORDER_GROUP` | `order-group` | |
-| `PAYMENT_GROUP` | `payment-group` | |
-| `PRODUCT_GROUP` | `product-group` | |
+| Constant | Value | Producer | Consumer(s) |
+|---|---|---|---|
+| `USER_TOPIC` | `user-topics` | user-service | analytics-service, promotion-service |
+| `USER_CONFIRMATION_TOPIC` | `user-confirmation-topic` | analytics-service | user-service |
+| `ORDER_TOPIC` | `order-topics` | order-service | payment-service, product-service, notification-service |
+| `ORDER_CONFIRMATION_TOPIC` | `order-confirmation-topic` | payment-service | order-service |
+| `PAYMENT_TOPIC` | `payment-topics` | payment-service | notification-service |
+| `KITCHEN_ORDER_TOPIC` | `kitchen-order-topic` | *(not yet wired)* | kitchen-service |
+| `DELIVERY_ORDER_TOPIC` | `delivery-order-topic` | *(not yet wired)* | delivery-service, notification-service |
+| `REVIEW_ORDER_TOPIC` | `review-order-topic` | *(not yet wired)* | review-service |
+
+## Consumer Groups
+| Constant | Value | Service |
+|---|---|---|
+| `ANALYTICS_GROUP` | `analytics-group` | analytics-service |
+| `USER_GROUP` | `user-group` | user-service |
+| `ORDER_GROUP` | `order-group` | order-service |
+| `PAYMENT_GROUP` | `payment-group` | payment-service |
+| `PRODUCT_GROUP` | `product-group` | product-service |
+| `KITCHEN_GROUP` | `kitchen-group` | kitchen-service |
+| `DELIVERY_GROUP` | `delivery-group` | delivery-service |
+| `REVIEW_GROUP` | `review-group` | review-service |
+| `PROMOTION_GROUP` | `promotion-group` | promotion-service |
+| `NOTIFICATION_GROUP` | `notification-group` | notification-service |
 
 ## Service Endpoints (Local)
 | Service | Port | Public Paths | Auth Required |
-| `user-service` | 8081 | `/api/v1/users`, `/api/v1/auth/**` | `/api/v1/auth/logout`, `/actuator` |
+|---|---|---|---|
+| `user-service` | 8081 | `/api/v1/users`, `/api/v1/auth/**` | `/api/v1/auth/logout` |
 | `order-service` | 8083 | — | `/api/v1/orders/**` |
 | `product-service` | 8085 | — | `/api/v1/products/**` |
+| `basket-service` | 8086 | — | `/api/v1/basket/**` |
+| `kitchen-service` | 8087 | — | `/api/v1/kitchen/tickets/**` |
+| `delivery-service` | 8088 | — | `/api/v1/delivery/**` |
+| `review-service` | 8089 | — | `/api/v1/reviews/**` |
+| `promotion-service` | 8090 | `/api/v1/promotions/{code}` | `POST /api/v1/promotions` |
 | `analytics-service` | 8082 | `/actuator` | — |
-| `payment-service` | 8084 | — | internal/event-driven only |
+| `payment-service` | 8084 | — | event-driven only |
+| `notification-service` | — | — | event-driven only |
 
 ## Key Data Notes
 - `Order.items` is stored as plain `TEXT` (no normalization); expected to be JSON string from client

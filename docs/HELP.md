@@ -25,14 +25,21 @@ sudo apt install jq
 Food Ordering System/
 ├── common-libs/          # Shared DTOs, enums, Kafka constants
 ├── user-service/         # User registration, JWT auth (port 8081)
-├── analytics-service/    # Consumes Kafka events, Redis counters (port 8082)
-├── gateway-service/      # API gateway, JWT validation, rate limiting (port 8080)
+├── analytics-service/    # Kafka consumer, Redis counters (port 8082)
 ├── order-service/        # Order CRUD, Kafka producer + consumer (port 8083)
+├── payment-service/      # Event-driven payment processor (port 8084)
+├── product-service/      # Product catalog, stock reservation (port 8085)
+├── basket-service/       # Redis-backed shopping basket (port 8086)
+├── kitchen-service/      # Kitchen ticket management (port 8087)
+├── delivery-service/     # Delivery tracking (port 8088)
+├── review-service/       # Order reviews, DynamoDB (port 8089)
+├── promotion-service/    # Promotion codes (port 8090)
+├── notification-service/ # Event-driven notifications, no HTTP
 ├── init-db/              # PostgreSQL init scripts
 ├── docker-compose.yml    # Full infrastructure + services
 ├── start.sh              # One-command build & run script
 ├── generate-secrets.sh   # Generates .env with secure secrets
-├── .env.example          # Template showing required env variables
+├── prometheus.yml        # Prometheus scrape config
 └── CLAUDE.md             # Project context for Claude Code
 ```
 
@@ -90,7 +97,7 @@ rm .env && ./generate-secrets.sh
 ```
 
 This compiles all modules in the correct dependency order:
-`common-libs` → `user-service`, `analytics-service`, `gateway-service`
+`common-libs` first, then all service modules in parallel.
 
 Each service gets a `.jar` file inside its `target/` directory.
 The Dockerfiles copy these JARs — so **Maven must run before Docker**.
@@ -118,10 +125,10 @@ docker compose up --build -d
 docker compose ps
 ```
 
-All services should show `running`. Then check health endpoints:
+All services should show `running`. Then spot-check a health endpoint:
 ```bash
-curl http://localhost:8080/actuator/health   # gateway
 curl http://localhost:8081/actuator/health   # user-service
+curl http://localhost:8083/actuator/health   # order-service
 ```
 
 Both should return `{"status":"UP"}`.
@@ -132,18 +139,26 @@ Both should return `{"status":"UP"}`.
 
 | Service | Port | URL |
 |---------|------|-----|
-| **Gateway** (entry point) | 8080 | http://localhost:8080 |
 | **User Service** | 8081 | http://localhost:8081 |
 | **Analytics Service** | 8082 | http://localhost:8082 |
 | **Order Service** | 8083 | http://localhost:8083 |
+| **Payment Service** | 8084 | event-driven only (no HTTP) |
+| **Product Service** | 8085 | http://localhost:8085 |
+| **Basket Service** | 8086 | http://localhost:8086 |
+| **Kitchen Service** | 8087 | http://localhost:8087 |
+| **Delivery Service** | 8088 | http://localhost:8088 |
+| **Review Service** | 8089 | http://localhost:8089 |
+| **Promotion Service** | 8090 | http://localhost:8090 |
+| **Notification Service** | — | event-driven only (no HTTP) |
 | **Grafana** (logs & traces) | 3000 | http://localhost:3000 |
+| **Prometheus** (metrics) | 9090 | http://localhost:9090 |
 | **PostgreSQL** | 5432 | localhost:5432 |
 | **Redis** | 6379 | localhost:6379 |
 | **Kafka** | 9092 | localhost:9092 |
 | **Loki** (log storage) | 3100 | http://localhost:3100 |
 | **Tempo** (trace storage) | 3200 | http://localhost:3200 |
 
-> Always send requests through the **Gateway on port 8080**, not directly to services.
+> There is no API gateway locally — access each service directly on its port. In production, AWS API Gateway handles routing.
 
 ---
 
@@ -157,7 +172,7 @@ Core dependencies that all services rely on.
 | Container | Image | Role |
 |-----------|-------|------|
 | `postgres-db` | postgres:16 | Single Postgres instance hosting three databases: `user_db`, `order_db`, `payment_db`. Databases are created at first startup by `init-db/init.sh` via the `docker-entrypoint-initdb.d` mount. |
-| `redis-cache` | redis:alpine | Shared Redis instance. Used by user-service (refresh token storage) and gateway-service (rate limiting). Also used by analytics-service (role counters). |
+| `redis-cache` | redis:alpine | Shared Redis instance. Used by user-service (refresh token storage), analytics-service (role counters), and basket-service (basket storage). |
 | `zookeeper` | confluentinc/cp-zookeeper:7.5.0 | Required coordinator for Kafka. Not used directly by any application. |
 | `kafka` | confluentinc/cp-kafka:7.5.0 | Message broker. Exposes two listeners: `kafka:29092` for internal Docker communication and `localhost:9092` for access from your host machine. |
 
@@ -204,7 +219,7 @@ The Dockerfiles copy the pre-built JAR from `<SERVICE_PATH>/target/*.jar`. This 
 ### Step 1 — Register a user
 
 ```bash
-curl -s -X POST http://localhost:8080/api/v1/users \
+curl -s -X POST http://localhost:8081/api/v1/users \
   -H "Content-Type: application/json" \
   -d '{"username":"john","password":"secret123","email":"john@example.com","role":"USER"}' \
   | jq
@@ -222,7 +237,7 @@ Only `ACTIVE` users can log in. Attempting login while still `PENDING` returns `
 ### Step 2 — Login
 
 ```bash
-curl -s -X POST http://localhost:8080/api/v1/auth/login \
+curl -s -X POST http://localhost:8081/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"john","password":"secret123"}' \
   | jq
@@ -246,7 +261,7 @@ Response:
 ```bash
 TOKEN="eyJ..."   # paste your accessToken here
 
-curl -s http://localhost:8080/api/v1/orders \
+curl -s http://localhost:8083/api/v1/orders \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -260,7 +275,7 @@ When the access token expires (after 15 min), use the refresh token to get a new
 ```bash
 REFRESH="eyJ..."   # paste your refreshToken here
 
-curl -s -X POST http://localhost:8080/api/v1/auth/refresh \
+curl -s -X POST http://localhost:8081/api/v1/auth/refresh \
   -H "Content-Type: application/json" \
   -d "{\"refreshToken\":\"$REFRESH\"}" \
   | jq
@@ -274,7 +289,7 @@ The old refresh token is automatically revoked in Redis.
 Revokes the refresh token from Redis so it can no longer be used:
 
 ```bash
-curl -s -X POST http://localhost:8080/api/v1/auth/logout \
+curl -s -X POST http://localhost:8081/api/v1/auth/logout \
   -H "Content-Type: application/json" \
   -d "{\"refreshToken\":\"$REFRESH\"}"
 ```
@@ -311,8 +326,8 @@ Every log line includes a `traceId` that links directly to the full distributed 
 ```bash
 # Follow logs for a specific service
 docker compose logs -f user-service
-docker compose logs -f gateway-service
-docker compose logs -f analytics-service
+docker compose logs -f order-service
+docker compose logs -f payment-service
 
 # Follow logs for all services at once
 docker compose logs -f
@@ -343,11 +358,11 @@ This file is **gitignored** and must never be committed.
 
 | Variable | Used by | Description |
 |----------|---------|-------------|
-| `JWT_SECRET` | user-service, gateway-service | 256-bit secret for signing/validating JWTs |
-| `POSTGRES_USER` | postgres, user-service | Database username |
-| `POSTGRES_PASSWORD` | postgres, user-service | Database password |
-| `REDIS_HOST` | user-service, gateway-service, analytics-service | Redis hostname |
-| `REDIS_PORT` | user-service, gateway-service, analytics-service | Redis port |
+| `JWT_SECRET` | user-service | 256-bit secret for signing/validating JWTs |
+| `POSTGRES_USER` | postgres, all PostgreSQL services | Database username |
+| `POSTGRES_PASSWORD` | postgres, all PostgreSQL services | Database password |
+| `REDIS_HOST` | user-service, analytics-service, basket-service | Redis hostname |
+| `REDIS_PORT` | user-service, analytics-service, basket-service | Redis port |
 
 See `.env.example` for the full template.
 
@@ -367,9 +382,10 @@ The application code never changes — it always reads from environment variable
 Docker Compose enforces a strict startup sequence using health checks. Services only start after their dependencies are confirmed ready — not just running.
 
 ```
-zookeeper → kafka ──────────────────────────────┐
-postgres ───────────────────────────────────────┼→ user-service, order-service, payment-service
-redis ──────────────────────────────────────────┘→ analytics-service, gateway-service
+zookeeper → kafka ──────────────────────────────────────────────────────┐
+postgres ───────────────────────────────────────────────────────────────┼→ user-service, order-service, payment-service,
+redis ──────────────────────────────────────────────────────────────────┘   product-service, delivery-service, promotion-service
+                                                                             analytics-service, basket-service, notification-service
 ```
 
 | Service | Health check | Notes |

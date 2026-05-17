@@ -1,106 +1,197 @@
 # API Audit — Snapshot
 
-> **Date:** 2026-04-17
-> **Scope:** HTTP-exposing services — `gateway-service`, `user-service`, `order-service`, `product-service`.
-> **Method:** Static code audit (Pass A + Pass C). Runtime verification (Pass B — principles 6, 7, 10) deferred because no containers were running at audit time; rerun with `./start.sh` to confirm empirically.
+> **Date:** 2026-05-18 (re-baselined; original audit 2026-04-17)
+> **Scope:** All HTTP-exposing services — `user-service`, `order-service`, `product-service`, `basket-service`, `kitchen-service`, `delivery-service`, `review-service`, `promotion-service`.
+> **Not in scope:** `analytics-service` (actuator only), `payment-service` (event-driven only), `notification-service` (event-driven only). `gateway-service` retired — removed from audit.
+> **Method:** Static code audit. Runtime verification (Pass B — live HTTPS, rate-limit burst, N+1 SQL) still deferred; rerun with `./start.sh` to confirm empirically.
 > **Rubric:** See `API_PRINCIPLES.md`.
 >
 > Legend: 🟢 pass · 🟡 partial · 🔴 gap · ⚪ N/A
 
 ---
 
-## Summary Matrix
+## Summary Matrix — Original Services
 
-| # | Principle            | gateway | user | order | product |
-|---|----------------------|:---:|:---:|:---:|:---:|
-| 1 | Consistency          | 🟢 | 🔴 | 🟢 | 🟢 |
-| 2 | Simplicity           | 🟢 | 🟢 | 🟢 | 🟢 |
-| 3 | Resource-oriented    | 🟢 | 🟢 | 🟢 | 🟢 |
-| 4 | Versioning           | 🟢 | 🟢 | 🟢 | 🟢 |
-| 5 | Error handling       | ⚪ | 🔴 | 🔴 | 🟢 |
-| 6 | Security             | 🟡 | 🔴 | 🟡 | 🟡 |
-| 7 | Performance          | 🟢 | 🟢 | 🟡 | 🟢 |
-| 8 | Documentation        | 🔴 | 🟢 | 🟢 | 🟢 |
-| 9 | Idempotency          | ⚪ | 🟢 | 🔴 | 🟢 |
-| 10 | Scalability         | 🟢 | 🟢 | 🟢 | 🟢 |
-| 11 | Flexibility         | ⚪ | ⚪ | 🟡 | 🟢 |
-| 12 | Testability         | 🔴 | 🔴 | 🔴 | 🔴 |
+| # | Principle       | user | order | product |
+|---|-----------------|:----:|:-----:|:-------:|
+| 1 | Consistency     | 🔴 | 🟢 | 🟢 |
+| 2 | Simplicity      | 🟢 | 🟢 | 🟢 |
+| 3 | Resource-oriented | 🟢 | 🟢 | 🟢 |
+| 4 | Versioning      | 🟢 | 🟢 | 🟢 |
+| 5 | Error handling  | 🔴 | 🔴 | 🟢 |
+| 6 | Security        | 🔴 | 🟡 | 🟡 |
+| 7 | Performance     | 🟢 | 🟡 | 🟢 |
+| 8 | Documentation   | 🟢 | 🟢 | 🟢 |
+| 9 | Idempotency     | 🟢 | 🔴 | 🟢 |
+| 10 | Scalability    | 🟢 | 🟢 | 🟢 |
+| 11 | Flexibility    | ⚪ | 🟡 | 🟢 |
+| 12 | Testability    | 🔴 | 🔴 | 🔴 |
+
+> All 🔴 / 🟡 from the 2026-04-17 audit remain open — none have been remediated.
+
+---
+
+## Summary Matrix — New Services (2026-05-18)
+
+| # | Principle       | basket | kitchen | delivery | review | promotion |
+|---|-----------------|:------:|:-------:|:--------:|:------:|:---------:|
+| 1 | Consistency     | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 |
+| 2 | Simplicity      | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 |
+| 3 | Resource-oriented | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 |
+| 4 | Versioning      | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 |
+| 5 | Error handling  | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 |
+| 6 | Security        | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 |
+| 7 | Performance     | ⚪ | ⚪ | ⚪ | 🟡 | ⚪ |
+| 8 | Documentation   | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 |
+| 9 | Idempotency     | 🟡 | ⚪ | ⚪ | 🟡 | ⚪ |
+| 10 | Scalability    | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 |
+| 11 | Flexibility    | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| 12 | Testability    | 🔴 | 🔴 | 🔴 | 🔴 | 🔴 |
 
 ---
 
 ## Findings by Principle
 
-### 1. Consistency — 🔴 `user-service` (1 gap)
-- **Gap** — `POST /api/v1/users` returns `ResponseEntity<String>` with body `"User created and is being processed..."`. Every other creation endpoint returns a typed DTO. `UserController.java:37-42`.
-  - **Remediation.** Return a typed `UserRegistrationResponse` record with at minimum `{ username, status, message }`. Also change status code from `200` to `202 Accepted` (async — user is not yet `ACTIVE`).
+### 1. Consistency
 
-### 2. Simplicity — 🟢
-No gaps. Endpoint counts per service are small (1–3 per controller), DTOs are flat, responses expose only necessary fields.
+**🔴 `user-service`** (gap from 2026-04-17, still open)
+- `POST /api/v1/users` returns `ResponseEntity<String>` with body `"User created and is being processed (PENDING)..."`. Every other creation endpoint returns a typed DTO. `UserController.java:37-42`.
+- **Remediation.** Return a `UserRegistrationResponse` record — at minimum `{ username, status, message }`. Change status code from `200` to `202 Accepted` (async — user is not yet `ACTIVE`).
 
-### 3. Resource-oriented — 🟢
-All paths are nouns. `/auth/login|refresh|logout` is an acceptable exception — verbs operate on tokens, not on the `User` resource.
-
-### 4. Versioning — 🟢
-`/api/v1/` uniformly applied across gateway routes and every controller's `@RequestMapping`.
-
-### 5. Error handling — 🔴 `user-service`, 🔴 `order-service`
-- **Gap — `user-service`** — no `@RestControllerAdvice`. Any unhandled exception yields the default Spring Boot error page, including stack traces in dev and arbitrary shapes in prod.
-  - **Remediation.** Create `user-service/.../exception/GlobalExceptionHandler.java` modeled on the product-service reference. Handle: `BadCredentialsException` → 401, `MethodArgumentNotValidException` → 400, generic `Exception` → 500.
-- **Gap — `order-service`** — same as above, no `@RestControllerAdvice`.
-  - **Remediation.** Create `order-service/.../exception/GlobalExceptionHandler.java`. Handle: `OrderNotFoundException` → 404, `MethodArgumentNotValidException` → 400, generic `Exception` → 500.
-- **Structural recommendation.** Promote the `ErrorResponse` record (currently defined inline in `product-service/.../GlobalExceptionHandler.java:18`) to `common-libs` so all three services emit an identical error envelope.
-
-### 6. Security — 🟡 (partial across all HTTP services)
-- **Gap — `user-service`** — `UserRegistrationDto` has **no validation annotations** (`UserRegistrationDto.java:7-12`) and `UserController#register` does not use `@Valid` (`UserController.java:37`). Registration accepts empty usernames, empty passwords, malformed emails.
-  - **Remediation.** Add `@NotBlank @Size(min=3, max=50)` on `username`, `@NotBlank @Size(min=8)` on `password`, `@Email @NotBlank` on `email`, `@NotNull` on `role`. Add `@Valid` on the controller parameter.
-- **Gap — system-wide** — no HTTPS at the edge. Currently tracked in `PLAN.md` (miscellaneous #5).
-- **Pass — `order-service`, `product-service`, `AuthController`** — `@Valid` applied on request DTOs; `LoginDto`, `RefreshTokenDto`, `CreateOrderDto`, `CreateProductDto` carry validation annotations.
-- **Pass — rate limiting, JWT validation, BCrypt, role header injection** — all present.
-
-### 7. Performance — 🟡 `order-service` (1 gap)
-- **Gap — `order-service`** — `GET /api/v1/orders` (`OrderController.java:68-72`) returns `List<OrderResponseDto>` unpaginated. A user with hundreds of orders gets a single large payload.
-  - **Remediation.** Change return type to `Page<OrderResponseDto>`, accept `Pageable` with `@PageableDefault(size = 20)`, update service method signature accordingly.
-- **Pass — `product-service`** — paginated list with optional category filter.
-- **Pass — auth endpoints** — single-record responses, no pagination needed.
-
-### 8. Documentation — 🔴 `gateway-service`
-- **Gap — `gateway-service`** — no `OpenApiConfig`, no aggregated Swagger UI. Clients have to hit each downstream service individually to discover endpoints.
-  - **Remediation (lower priority).** springdoc-openapi does not natively aggregate across microservices — either (a) add a static `openapi.yaml` gateway aggregator, (b) document all routes in `SERVICES.md` (partially done), or (c) accept the limitation because downstream services already expose their own Swagger UIs. Recommendation: **(c) + link to each Swagger UI from `SERVICES.md`** — least-effort, no runtime aggregation complexity.
-- **Pass — user, order, product** — OpenAPI configs with titles, descriptions, and bearer scheme declarations. Every endpoint has `@Operation` + `@ApiResponses`.
-
-### 9. Idempotency — 🔴 `order-service`
-- **Gap — `order-service`** — `POST /api/v1/orders` has no `Idempotency-Key` support. A network retry between client and gateway can create duplicate orders (and duplicate payments through the Saga).
-  - **Remediation.** Accept `Idempotency-Key` header; cache `(key, username) → orderId` in Redis for 24h; on repeat, return the cached response. This is the highest-impact reliability gap in the system.
-- **Pass — `product-service`** — `POST /api/v1/products` is ADMIN-only, infrequent; idempotency less critical but could use a `name` unique constraint as defense-in-depth.
-- **Pass — `user-service`** — registration is unauthenticated; idempotency typically keyed off a DB unique constraint on username (present).
-
-### 10. Scalability — 🟢
-Services are stateless; Redis holds the only shared runtime state; async messaging absorbs spikes. No in-memory per-request caches observed.
-
-### 11. Flexibility — 🟡 `order-service`
-- **Gap — `order-service`** — `GET /api/v1/orders` has no filtering (by status, date range) and no sorting (would follow from pagination remediation in #7).
-  - **Remediation.** Add `?status=PAID`, `?from=...`, `?to=...` query params when paginated.
-- **Pass — `product-service`** — pagination + filter by category + sort via `Pageable`.
-
-### 12. Testability — 🔴 All services
-- **Gap — all services** — 5 test files exist; all are placeholder `@SpringBootTest` with an empty `contextLoads()`. No `@WebMvcTest`, no `@DataJpaTest`, no Saga integration tests.
-  - **Remediation (staged).**
-    1. **Controller slices** — `@WebMvcTest` per controller, mocking services, covering happy path + validation errors.
-    2. **Repository slices** — `@DataJpaTest` for each service's repository.
-    3. **Saga integration** — one `@SpringBootTest` + Testcontainers (Postgres, Kafka, Redis) verifying the Order Saga end-to-end: create order → stock reserved → payment processed → order PAID.
-    4. **Contract tests** — DTO schema tests to catch accidental breaking changes.
+**🟢 All other services** — typed DTOs, consistent status codes.
 
 ---
 
-## Cross-Cutting Recommendations (promote to `common-libs`)
+### 2. Simplicity — 🟢 all services
 
-1. **`ApiError` record** (`status, error, message, timestamp, fieldErrors?`) — single shared error envelope across all services. Replaces the private record in `product-service/GlobalExceptionHandler.java:18`.
-2. **`PageResponse<T>` wrapper** (optional) — if the raw Spring `Page<T>` JSON shape (with internal fields like `pageable`, `sort.unsorted`) leaks too much infrastructure; otherwise leave `Page<T>` as-is.
-3. **`IdempotencyKeyFilter`** — a reusable servlet filter that reads `Idempotency-Key`, checks Redis, short-circuits with cached response if present.
+No gaps. Endpoint counts are small, DTOs are flat, responses expose only necessary fields.
+
+---
+
+### 3. Resource-oriented — 🟢 all services
+
+All paths are nouns. `/auth/login|refresh|logout` remains an acceptable exception.
+
+---
+
+### 4. Versioning — 🟢 all services
+
+`/api/v1/` uniformly applied across all controllers.
+
+---
+
+### 5. Error handling
+
+**🔴 `user-service`** (gap from 2026-04-17, still open)
+- No `@RestControllerAdvice`. Unhandled exceptions yield default Spring Boot error shape.
+- **Remediation.** Create `user-service/.../exception/GlobalExceptionHandler.java`. Handle: `BadCredentialsException` → 401, `MethodArgumentNotValidException` → 400, `Exception` → 500.
+
+**🔴 `order-service`** (gap from 2026-04-17, still open)
+- No `@RestControllerAdvice`.
+- **Remediation.** Create `order-service/.../exception/GlobalExceptionHandler.java`. Handle: `OrderNotFoundException` → 404, `MethodArgumentNotValidException` → 400, `Exception` → 500.
+
+**🟢 `product-service`, `basket-service`, `kitchen-service`, `delivery-service`, `review-service`, `promotion-service`** — all have `GlobalExceptionHandler`.
+
+**Structural recommendation (still open):** Promote `ErrorResponse` record to `common-libs` so all services share one error envelope shape.
+
+---
+
+### 6. Security
+
+**🔴 `user-service`** (gap from 2026-04-17, still open)
+- `UserRegistrationDto` has no validation annotations; `UserController#register` does not use `@Valid`. Registration accepts empty usernames, blank passwords, malformed emails.
+- **Remediation.** Add `@NotBlank @Size(min=3, max=50)` on `username`, `@NotBlank @Size(min=8)` on `password`, `@Email @NotBlank` on `email`, `@NotNull` on `role`. Add `@Valid` to the controller parameter.
+
+**🟡 `order-service`, `product-service`** — `@Valid` applied and DTOs annotated; no HTTPS at the edge (system-wide).
+
+**🟢 `basket-service`, `kitchen-service`, `delivery-service`, `review-service`, `promotion-service`** — `@Valid` applied, DTOs carry validation annotations.
+
+**System-wide gap** — no HTTPS at the edge (local + staging). Production will rely on AWS ALB/API Gateway TLS termination.
+
+---
+
+### 7. Performance
+
+**🟡 `order-service`** (gap from 2026-04-17, still open)
+- `GET /api/v1/orders` returns `List<OrderResponseDto>` unpaginated. A user with many orders gets one large payload.
+- **Remediation.** Change to `Page<OrderResponseDto>`, accept `Pageable` with `@PageableDefault(size = 20)`.
+
+**🟡 `review-service`** (new)
+- `GET /api/v1/reviews/orders/{orderId}` returns all reviews for an order unbounded. Low urgency now (orders typically have 1–2 reviews), but should be paginated before any public launch.
+- **Remediation.** Accept `Pageable`, return `Page<ReviewResponseDto>`.
+
+**⚪ `basket-service`, `kitchen-service`, `delivery-service`, `promotion-service`** — endpoints are by-ID or single-record; pagination N/A.
+
+---
+
+### 8. Documentation — 🟢 all services
+
+All services have `OpenApiConfig`, `@Tag`/`@Operation`/`@ApiResponse` on controllers. Swagger UI available at `/swagger-ui.html` on each service port.
+
+> `gateway-service` OpenAPI gap (2026-04-17) is moot — service retired.
+
+---
+
+### 9. Idempotency
+
+**🔴 `order-service`** (gap from 2026-04-17, still open)
+- `POST /api/v1/orders` has no `Idempotency-Key` support. A network retry can create duplicate orders and trigger duplicate payments through the Saga. Highest-impact reliability gap in the system.
+- **Remediation.** Accept `Idempotency-Key` header; cache `(key, username) → orderId` in Redis for 24h; return cached response on repeat.
+
+**🟡 `basket-service`**
+- `POST /api/v1/basket/items` has no idempotency guard. Adding the same product twice creates duplicate basket entries instead of incrementing quantity.
+- **Remediation.** Upsert by `productId`: if item already in basket, increment quantity rather than insert new row.
+
+**🟡 `review-service`**
+- `POST /api/v1/reviews` can create multiple reviews for the same order from the same user if retried.
+- **Remediation.** Add a unique constraint on `(orderId, username)` at the DB level; let the constraint bubble up as a 409 via the `GlobalExceptionHandler`.
+
+**⚪ `kitchen-service`, `delivery-service`, `promotion-service`** — only PUT/GET endpoints or admin-only POST; lower-risk.
+
+---
+
+### 10. Scalability — 🟢 all services
+
+Services are stateless; Redis holds the only shared runtime state (tokens, basket, counters). No in-memory per-request caches observed.
+
+---
+
+### 11. Flexibility
+
+**🟡 `order-service`** (gap from 2026-04-17, still open)
+- `GET /api/v1/orders` has no filtering (by status, date range) or sorting. Follows from the pagination remediation in #7.
+- **Remediation.** Add `?status=PAID`, `?from=...`, `?to=...` after pagination is in place.
+
+**⚪ all other services** — endpoints are by-ID; filtering not applicable to their current shapes.
+
+---
+
+### 12. Testability — 🔴 all services
+
+**Original services** (gap from 2026-04-17, still open)
+- `user-service`, `order-service`, `product-service`, `payment-service`, `analytics-service` — all have one placeholder `contextLoads()` test. No `@WebMvcTest`, no `@DataJpaTest`, no Saga integration tests.
+
+**New services** (new finding)
+- `basket-service`, `kitchen-service`, `delivery-service`, `review-service`, `promotion-service` — zero test files.
+
+**Remediation (staged, applies to all services):**
+1. **Controller slices** — `@WebMvcTest` per controller, mocking the service layer, covering happy path + validation errors + 4xx responses.
+2. **Repository slices** — `@DataJpaTest` for JPA services; DynamoDB Enhanced Client tests with LocalStack for `review-service` and `kitchen-service`.
+3. **Saga integration** — one `@SpringBootTest` + Testcontainers (Postgres, Kafka, Redis) verifying the Order Saga end-to-end: place order → reserve stock → process payment → order `PAID`.
+4. **Contract tests** — DTO schema tests to catch accidental breaking changes across services.
+
+---
+
+## Cross-Cutting Recommendations
+
+1. **`ApiError` record** in `common-libs` — `{ status, error, message, timestamp, fieldErrors? }`. Replaces the private record in `product-service/GlobalExceptionHandler.java`. Required by user-service and order-service when they add their handlers.
+2. **`IdempotencyKeyFilter`** — reusable servlet filter reading `Idempotency-Key`, checking Redis, short-circuiting with cached response. Needed by `order-service` (critical) and optionally `review-service`.
+3. **`PageResponse<T>` wrapper** — consider once multiple services have paginated list endpoints; not worth it yet.
 
 ---
 
 ## What Is Out of Scope for This Snapshot
 
-- **Runtime verification (Pass B).** Principles 6 (live HTTPS check, live rate-limit burst test), 7 (N+1 query inspection via Hibernate SQL logs), and 10 (horizontal scale test under load) require the stack running. Rerun after `./start.sh` and note results here.
-- **Fixes.** Every 🔴 and 🟡 has a remediation line; tracking lives in `PLAN.md` under "API Hardening".
+- **Runtime verification (Pass B).** Live HTTPS check, rate-limit burst test, N+1 SQL inspection via Hibernate logs, and horizontal scale test require the stack running. Rerun after `./start.sh`.
+- **Event-driven services.** `payment-service`, `analytics-service`, `notification-service` have no HTTP surface — not applicable to this rubric.
+- **Fixes.** Every 🔴 and 🟡 has a remediation line above. Prioritised order: testability (12) → order idempotency (9) → user validation (6) → exception handlers (5) → order pagination (7).
