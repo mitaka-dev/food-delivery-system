@@ -1,0 +1,10 @@
+title = "food-delivery-system gitleaks config"
+
+[allowlist]
+description = "Test fixtures and local dev keys"
+paths = [
+  '''src/test''',
+  '''dev/seed''',
+  '''dev/keys''',
+  '''generate-secrets\.sh''',
+]

@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Blocks dangerous Flyway migration patterns before they reach the repo.
+# Usage: flyway-migration-safety [--allow-breaking]
+set -euo pipefail
+
+ALLOW_BREAKING=false
+[ "${1:-}" = "--allow-breaking" ] && ALLOW_BREAKING=true
+
+# Match *-service/src/main/resources/db/migration/V*__*.sql
+STAGED_MIGRATIONS=$(git diff --cached --name-only --diff-filter=ACM | \
+  grep -E '[a-z-]+-service/src/main/resources/db/migration/V[0-9]+__.*\.sql$' || true)
+
+[ -z "$STAGED_MIGRATIONS" ] && exit 0
+
+FAIL=0
+
+for f in $STAGED_MIGRATIONS; do
+  # --- Rule 1: Immutability — modified (not added) migration that exists in HEAD ---
+  IS_ADDED=$(git diff --cached --diff-filter=A --name-only | grep -qF "$f" && echo yes || echo no)
+  if [ "$IS_ADDED" = "no" ]; then
+    if git ls-tree -r HEAD --name-only 2>/dev/null | grep -qF "$f"; then
+      echo "FAIL: Migration $f was modified after merge."
+      echo "   Migrations are immutable. Create a new V(n+1) migration instead."
+      FAIL=1
+      continue
+    fi
+  fi
+
+  # --- Rule 2: Dangerous DDL patterns ---
+  for pattern in 'DROP[[:space:]]+COLUMN' 'DROP[[:space:]]+TABLE' 'TRUNCATE[[:space:]]+TABLE' 'RENAME[[:space:]]+COLUMN'; do
+    MATCH=$(grep -inE "$pattern" "$f" | grep -v '^[[:space:]]*--' | head -1 || true)
+    if [ -n "$MATCH" ]; then
+      if [ "$ALLOW_BREAKING" = "true" ]; then
+        echo "WARNING: Breaking migration allowed (--allow-breaking): $f"
+        echo "   Match: $MATCH"
+      else
+        echo "FAIL: Breaking migration pattern in $f"
+        echo "   Match: $MATCH"
+        echo "   Use --allow-breaking flag if intentional and verify your deploy plan."
+        FAIL=1
+      fi
+    fi
+  done
+
+  # --- Rule 3: SET NOT NULL without prior nullable add ---
+  NN_COLUMN=$(grep -inE 'ALTER[[:space:]]+COLUMN[[:space:]]+[a-z_]+[[:space:]]+SET[[:space:]]+NOT[[:space:]]+NULL' "$f" | \
+              grep -v '^[[:space:]]*--' | grep -oiE 'COLUMN[[:space:]]+[a-z_]+' | awk '{print $2}' | head -1 || true)
+  if [ -n "$NN_COLUMN" ]; then
+    SERVICE_MIGRATION_DIR=$(dirname "$f")
+    PRIOR=$(ls "$SERVICE_MIGRATION_DIR"/V*.sql 2>/dev/null | sort -V | head -n -1 || true)
+    FOUND=false
+    for prior_file in $PRIOR; do
+      if grep -iqE "ADD[[:space:]]+(COLUMN[[:space:]]+)?${NN_COLUMN}[[:space:]].*NULL" "$prior_file" 2>/dev/null; then
+        FOUND=true
+        break
+      fi
+    done
+    if [ "$FOUND" = "false" ]; then
+      if [ "$ALLOW_BREAKING" = "true" ]; then
+        echo "WARNING: SET NOT NULL on '$NN_COLUMN' without prior nullable add (--allow-breaking)"
+      else
+        echo "FAIL: $f sets NOT NULL on '$NN_COLUMN' without a preceding nullable add migration."
+        echo "   Pattern: add nullable → backfill data → set NOT NULL (across two deploys)."
+        FAIL=1
+      fi
+    fi
+  fi
+
+  # --- Rule 4: Version number sequence ---
+  VERSION=$(basename "$f" | grep -oE '^V[0-9]+' | tr -d 'V')
+  SERVICE_MIGRATION_DIR=$(dirname "$f")
+  PREV_VERSION=$(ls "$SERVICE_MIGRATION_DIR"/V*.sql 2>/dev/null | \
+                 grep -oE '/V[0-9]+' | tr -d '/V' | sort -n | \
+                 grep -v "^${VERSION}$" | tail -1 || true)
+  if [ -n "$PREV_VERSION" ] && [ "$VERSION" -ne $((PREV_VERSION + 1)) ]; then
+    echo "FAIL: Migration version V${VERSION} skips from V${PREV_VERSION} (no gaps allowed)"
+    FAIL=1
+  fi
+done
+
+[ $FAIL -eq 1 ] && exit 1 || exit 0

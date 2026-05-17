@@ -137,7 +137,7 @@ The full order flow following the same Saga pattern as user registration:
 | Phase 2 | Remove gateway-service; direct port access locally | `[x]` Done |
 | Phase 3 | Align plan docs naming (common-libs, user-service, product-service) | `[x]` Done |
 | Phase 4 | New service skeletons (basket, kitchen, delivery, review, promotion, notification) | `[x]` Done |
-| Phase 5 | Hooks and skills via skill-creator plugin | `[ ]` Not started |
+| Phase 5 | Hooks and skills via skill-creator plugin | `[x]` Done — 5 hooks, 4 skills |
 
 ---
 

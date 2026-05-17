@@ -34,6 +34,27 @@ for arg in "$@"; do
 done
 
 # ════════════════════════════════════════════════════════════
+#  STEP 0 — Install git hooks (idempotent)
+# ════════════════════════════════════════════════════════════
+step "Installing git hooks..."
+
+GIT_HOOK=".git/hooks/pre-commit"
+if [ ! -f "$GIT_HOOK" ] || ! grep -q "enforce-conventions" "$GIT_HOOK" 2>/dev/null; then
+  cat > "$GIT_HOOK" <<'HOOKEOF'
+#!/usr/bin/env bash
+set -e
+REPO_ROOT=$(git rev-parse --show-toplevel)
+"$REPO_ROOT/.claude/hooks/pre-commit/enforce-conventions"
+"$REPO_ROOT/.claude/hooks/pre-commit/secret-scanner"
+"$REPO_ROOT/.claude/hooks/pre-commit/flyway-migration-safety"
+HOOKEOF
+  chmod +x "$GIT_HOOK"
+  ok "Git pre-commit hook installed"
+else
+  ok "Git pre-commit hook already installed"
+fi
+
+# ════════════════════════════════════════════════════════════
 #  STEP 1 — Check prerequisites
 # ════════════════════════════════════════════════════════════
 step "Checking prerequisites..."

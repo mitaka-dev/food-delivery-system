@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Blocks common convention violations before they reach the repo.
+set -euo pipefail
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$STAGED" ] && exit 0
+
+FAIL=0
+report() {
+  echo "FAIL: $1"
+  echo "   File: $2"
+  [ -n "${3:-}" ] && echo "   Match: $3"
+  FAIL=1
+}
+
+for f in $STAGED; do
+  [ -f "$f" ] || continue
+
+  # Docker 'latest' tags — exempt files with 'local' in their name
+  if [[ "$f" =~ \.(yaml|yml)$ ]] && [[ ! "$f" =~ local ]]; then
+    MATCH=$(grep -nE 'image:.*:latest( |$)' "$f" 2>/dev/null | head -1 || true)
+    if [ -n "$MATCH" ]; then
+      report "Docker tag 'latest' is forbidden outside local files" "$f" "$MATCH"
+    fi
+  fi
+
+  # AWS access key prefix
+  MATCH=$(grep -nE 'AKIA[A-Z0-9]{16}' "$f" 2>/dev/null | head -1 || true)
+  if [ -n "$MATCH" ]; then
+    report "AWS access key prefix detected" "$f" "$MATCH"
+  fi
+
+  # Stripe live keys
+  MATCH=$(grep -nE 'sk_live_[A-Za-z0-9]{24,}' "$f" 2>/dev/null | head -1 || true)
+  if [ -n "$MATCH" ]; then
+    report "Stripe LIVE key detected (use sk_test_ in development)" "$f" "$MATCH"
+  fi
+
+  # Service POM version declarations inside <dependency> blocks
+  # Pattern: *-service/pom.xml (not the root pom.xml or common-libs/pom.xml)
+  if [[ "$f" =~ [a-z-]+-service/pom\.xml$ ]]; then
+    # Simple grep: <version> tag that is NOT inside <parent> or <plugin>
+    # We look for <version> appearing between <dependency> and </dependency>
+    if python3 - "$f" <<'PYEOF' 2>/dev/null; then
+import sys, re
+content = open(sys.argv[1]).read()
+# Remove parent and plugin blocks first
+content = re.sub(r'<parent>.*?</parent>', '', content, flags=re.DOTALL)
+content = re.sub(r'<plugin>.*?</plugin>', '', content, flags=re.DOTALL)
+content = re.sub(r'<dependencyManagement>.*?</dependencyManagement>', '', content, flags=re.DOTALL)
+# Now find <version> inside <dependency> blocks
+if re.search(r'<dependency>.*?<version>.*?</version>.*?</dependency>', content, re.DOTALL):
+    sys.exit(0)  # found = print nothing, signal via exit
+sys.exit(1)
+PYEOF
+      report "Service POM declares dependency versions — BOM owns versions" "$f"
+    fi
+  fi
+
+  # Spring Boot 3.x references — only meaningful in config/build files
+  if [[ "$f" =~ \.(xml|yml|yaml)$ ]]; then
+    MATCH=$(grep -nE '(Spring Boot 3\.|spring-boot[.-][a-z-]*[<"'"'"':][[:space:]]*3\.[0-9])' "$f" 2>/dev/null | head -1 || true)
+    if [ -n "$MATCH" ]; then
+      report "Legacy Spring Boot 3.x reference (project locks to 4.x)" "$f" "$MATCH"
+    fi
+  fi
+done
+
+if [ $FAIL -eq 1 ]; then
+  echo ""
+  echo "Pre-commit convention checks failed. Fix the issues above before committing."
+  exit 1
+fi
+exit 0

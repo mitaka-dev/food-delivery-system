@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+# Blocks dangerous commands when the active AWS account is a production account.
+# Prompts for explicit confirmation rather than silently blocking.
+import json
+import re
+import subprocess
+import sys
+
+DANGEROUS_PATTERNS = [
+    (r"terraform\s+apply", "Terraform apply"),
+    (r"terraform\s+destroy", "Terraform destroy"),
+    (r"kubectl.*--context.*prod", "kubectl against prod cluster"),
+    (r"aws\s+s3\s+rm.*--recursive", "Bulk S3 delete"),
+    (r"aws\s+rds\s+delete-", "RDS delete"),
+    (r"aws\s+dynamodb\s+delete-table", "DynamoDB delete-table"),
+    (r"aws\s+iam\s+delete-", "IAM delete"),
+    (r"aws\s+ssm\s+send-command", "Remote command via SSM"),
+    (r"eksctl.*delete", "EKS delete via eksctl"),
+    (r"argocd\s+app\s+delete", "ArgoCD app delete"),
+]
+
+# Fill in production account IDs when AWS is configured.
+PRODUCTION_ACCOUNT_IDS: set[str] = set()
+
+
+def main() -> int:
+    try:
+        tool_input = json.load(sys.stdin)
+    except Exception:
+        return 0
+
+    if tool_input.get("tool") != "Bash":
+        return 0
+
+    command = tool_input.get("input", {}).get("command", "")
+
+    matched_label = None
+    for pattern, label in DANGEROUS_PATTERNS:
+        if re.search(pattern, command, re.IGNORECASE):
+            matched_label = label
+            break
+
+    if not matched_label:
+        return 0
+
+    if not PRODUCTION_ACCOUNT_IDS:
+        # No production accounts configured yet — pass through
+        return 0
+
+    try:
+        result = subprocess.run(
+            ["aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text"],
+            capture_output=True, text=True, timeout=5,
+        )
+        account_id = result.stdout.strip()
+    except Exception:
+        print(
+            f"WARNING: Cannot determine AWS account. Blocking: {matched_label}",
+            file=sys.stderr,
+        )
+        return 1
+
+    if account_id not in PRODUCTION_ACCOUNT_IDS:
+        return 0
+
+    print(f"\nPRODUCTION-TOUCHING COMMAND: {matched_label}", file=sys.stderr)
+    print(f"  Account : {account_id} (PRODUCTION)", file=sys.stderr)
+    print(f"  Command : {command}", file=sys.stderr)
+    print("\nTo proceed, type EXACTLY: I confirm production", file=sys.stderr)
+    try:
+        response = input("> ")
+    except EOFError:
+        return 1
+    if response.strip() == "I confirm production":
+        return 0
+    print("Confirmation not given — command blocked.", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

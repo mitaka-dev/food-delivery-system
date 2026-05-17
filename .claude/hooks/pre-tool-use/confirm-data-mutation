@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+# Prompts for confirmation before data-destructive operations, regardless of environment.
+import json
+import re
+import sys
+
+PATTERNS = [
+    (r"DROP\s+TABLE", "DROP TABLE"),
+    (r"DROP\s+DATABASE", "DROP DATABASE"),
+    (r"TRUNCATE", "TRUNCATE"),
+    (r"DELETE\s+FROM\s+\w+\s*;", "DELETE without WHERE clause"),
+    (r"aws\s+s3\s+rm.*--recursive", "S3 recursive delete"),
+    (r"aws\s+dynamodb\s+delete-table", "DynamoDB delete-table"),
+    (r"flyway\s+clean", "flyway clean (wipes schema)"),
+]
+
+
+def main() -> int:
+    try:
+        tool_input = json.load(sys.stdin)
+    except Exception:
+        return 0
+
+    if tool_input.get("tool") != "Bash":
+        return 0
+
+    command = tool_input.get("input", {}).get("command", "")
+
+    for pattern, label in PATTERNS:
+        if re.search(pattern, command, re.IGNORECASE):
+            print(f"\nData mutation detected: {label}", file=sys.stderr)
+            print(f"  Command: {command}", file=sys.stderr)
+            try:
+                response = input("Continue? [yes/N] ").strip().lower()
+            except EOFError:
+                return 1
+            if response == "yes":
+                return 0
+            print("Cancelled.", file=sys.stderr)
+            return 1
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
