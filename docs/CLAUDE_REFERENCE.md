@@ -160,7 +160,7 @@ Runs a full end-to-end test of both Saga flows against the live system:
 
 Stages all non-sensitive files (`git add .`), removes `.env` / `*.secret` / `*.key` from staging,
 generates a [Conventional Commits](https://www.conventionalcommits.org/) message
-(`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`), and commits.
+(`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`), and commits. **Does not push.**
 
 Never stages: `.env`, `*.secret`, `*.key`, credential files.
 

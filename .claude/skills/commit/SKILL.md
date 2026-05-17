@@ -5,7 +5,7 @@ disable-model-invocation: true
 allowed-tools: Bash(git *)
 ---
 
-Commit and push all current changes to `origin/main`.
+Stage and commit all current changes. Does not push.
 
 ## Steps
 
