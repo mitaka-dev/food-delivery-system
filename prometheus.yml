@@ -3,11 +3,6 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  - job_name: gateway-service
-    static_configs:
-      - targets: ['gateway-service:8080']
-    metrics_path: /actuator/prometheus
-
   - job_name: user-service
     static_configs:
       - targets: ['user-service:8081']
@@ -31,4 +26,29 @@ scrape_configs:
   - job_name: product-service
     static_configs:
       - targets: ['product-service:8085']
+    metrics_path: /actuator/prometheus
+
+  - job_name: basket-service
+    static_configs:
+      - targets: ['basket-service:8086']
+    metrics_path: /actuator/prometheus
+
+  - job_name: kitchen-service
+    static_configs:
+      - targets: ['kitchen-service:8087']
+    metrics_path: /actuator/prometheus
+
+  - job_name: delivery-service
+    static_configs:
+      - targets: ['delivery-service:8088']
+    metrics_path: /actuator/prometheus
+
+  - job_name: review-service
+    static_configs:
+      - targets: ['review-service:8089']
+    metrics_path: /actuator/prometheus
+
+  - job_name: promotion-service
+    static_configs:
+      - targets: ['promotion-service:8090']
     metrics_path: /actuator/prometheus
