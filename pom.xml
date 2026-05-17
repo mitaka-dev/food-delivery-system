@@ -23,6 +23,7 @@
     <module>analytics-service</module>
     <module>basket-service</module>
     <module>kitchen-service</module>
+    <module>delivery-service</module>
 </modules>
 
     <properties>

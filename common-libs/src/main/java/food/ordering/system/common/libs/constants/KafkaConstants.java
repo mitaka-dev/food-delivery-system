@@ -20,4 +20,7 @@ public class KafkaConstants {
 
     public static final String KITCHEN_ORDER_TOPIC = "kitchen-order-topic";
     public static final String KITCHEN_GROUP = "kitchen-group";
+
+    public static final String DELIVERY_ORDER_TOPIC = "delivery-order-topic";
+    public static final String DELIVERY_GROUP = "delivery-group";
 }
