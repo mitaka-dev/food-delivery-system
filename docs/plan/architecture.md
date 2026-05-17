@@ -495,7 +495,7 @@ Kitchen Service uses a DynamoDB outbox table instead, processed by a Stream-trig
 
 ## 6. Implementation Roadmap
 
-### Phase 1 — Foundation & Skeleton (Weeks 1–3)
+### Phase 1 — Foundation & Skeleton.
 Land infrastructure and one end-to-end happy path. No saga yet, no events.
 - Terraform-provisioned VPC, EKS, RDS, DynamoDB, ECR (3 envs: dev, staging, prod)
 - Identity Service + Restaurant Menu Service + skeleton Order Service
@@ -503,7 +503,7 @@ Land infrastructure and one end-to-end happy path. No saga yet, no events.
 
 **Why three services first?** You learn the deployment pipeline, observability stack, and JWT plumbing on the simplest services. Hard problems (sagas, events) come after the platform is solid.
 
-### Phase 2 — Outbox Pattern & First Event Flow (Weeks 4–6)
+### Phase 2 — Outbox Pattern & First Event Flow.
 Introduce outbox in Identity, deploy Notification Lambda, prove end-to-end async messaging.
 - Outbox table + poller in Identity Service
 - Notification Service as Lambda + SES
@@ -511,21 +511,21 @@ Introduce outbox in Identity, deploy Notification Lambda, prove end-to-end async
 
 **Why outbox now?** It's the foundational pattern. Every subsequent service will use it. Getting it right once means copying a working implementation rather than redesigning.
 
-### Phase 3 — Order Saga & Payment (Weeks 7–10)
+### Phase 3 — Order Saga & Payment.
 The hardest chunk: orchestrated saga, payment gateway integration, compensation logic.
 - Basket Service backed by Redis with idempotency keys
 - Payment Service with Stripe + immutable ledger + circuit breaker
 - Order Orchestrator Saga with state machine and compensation
 - Kitchen Service consumes `ORDER_PAID`
 
-### Phase 4 — Delivery, Reviews & Hardening (Weeks 11–14)
+### Phase 4 — Delivery, Reviews & Hardening.
 Complete the order-to-delivered loop. Add resilience and observability everywhere.
 - Delivery Service with claim-first job board
 - Review Service post-delivery
 - Resilience4j everywhere + chaos engineering with AWS FIS
 - Full observability rollout (Prometheus, Grafana, X-Ray)
 
-### Phase 5 — Production & Scale (Weeks 15+)
+### Phase 5 — Production & Scale.
 Beta launch, hardening based on real traffic, advanced patterns.
 - Security audit + WAF rules + penetration testing
 - Blue/green deployments via ArgoCD Rollouts
@@ -1235,10 +1235,8 @@ The module wires the EventBridge path-filter trigger, all CodeBuild projects, th
 
 ## Next Step
 
-The architecture above is reference material. The action plan that turns it into running code is in **`build-plan.md`** — 85 build steps across 16 phases (0–15), each sized for a single Claude Pro session. Start with `build-plan.md` Phase 0 Step 0.1 (monorepo bootstrap) and work forward.
+The architecture above is reference material. The action plan that turns it into running code is in **`build-plan.md`** — 85 build steps across 16 phases (0–15). Start with `build-plan.md` 
+Phase 0 Step 0.1 (monorepo bootstrap) and work forward.
 
-When a build step references "Section X" or "Step X.Y from architecture.md", come back here for the relevant detail.
-
----
-
-*End of architecture.md.*
+When a build step references "Section X" or "Step X.Y from architecture.md", 
+come back here for the relevant detail.

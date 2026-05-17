@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "postgres-order": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://user:password@localhost:5432/order_db"]
+    },
+    "postgres-user": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://user:password@localhost:5432/user_db"]
+    },
+    "postgres-payment": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://user:password@localhost:5432/payment_db"]
+    },
+    "postgres-product": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://user:password@localhost:5432/product_db"]
+    }
+  }
+}

@@ -1,7 +1,6 @@
 # Food Ordering System — Build Plan for Claude Code
 
-> **Purpose**: A step-by-step build guide for Claude Code (Claude Pro) to construct a production-grade food ordering microservices platform on AWS. Each build step is sized to fit in a single Claude Pro session.
->
+> **Purpose**: A step-by-step build guide for Claude Code to construct a production-grade food ordering microservices platform on AWS.
 > **Companion document**: `architecture.md` contains the architectural reference (sections 1–10) — the *what* and *why* behind the choices below. Read it once before starting; re-consult it when a step references a specific section. This file (`build-plan.md`) is the *how* — the action plan you work through one step at a time.
 
 ---
@@ -39,7 +38,7 @@ Java 25 is the September 2025 LTS release. Combined with Spring Boot 4 (released
 
 Every service in this plan uses `spring-boot-starter-parent:4.0.x`, `<java.version>25</java.version>`, and prefers virtual threads where I/O is the bottleneck.
 
-### Why two repositories (not one, not thirteen)
+### Why two repositories
 
 This plan uses a **monorepo for code + infrastructure** plus a **separate GitOps repo** for Kubernetes manifests. Two repos total:
 
@@ -1810,4 +1809,4 @@ If a session runs out of tokens mid-step:
 
 ---
 
-*End of build-plan.md. Total: 85 build steps across 16 phases (0–15). Reference architecture in companion file `architecture.md`.*
+Reference architecture in companion file `architecture.md`.*
