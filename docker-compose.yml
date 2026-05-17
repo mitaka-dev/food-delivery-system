@@ -185,6 +185,22 @@ services:
         condition: service_healthy
 
 # --- NEW SERVICES (uncomment to enable once implemented) ---
+#  kitchen-service:
+#    build:
+#      context: .
+#      dockerfile: kitchen-service/Dockerfile
+#      args:
+#        SERVICE_PATH: kitchen-service
+#    container_name: kitchen-service
+#    ports: ["8087:8087"]
+#    environment:
+#      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+#      AWS_REGION: us-east-1
+#      AWS_DYNAMODB_ENDPOINT: ""
+#    depends_on:
+#      kafka:
+#        condition: service_healthy
+
 #  basket-service:
 #    build:
 #      context: .

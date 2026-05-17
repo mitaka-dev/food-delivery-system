@@ -22,6 +22,7 @@
     <module>payment-service</module>
     <module>analytics-service</module>
     <module>basket-service</module>
+    <module>kitchen-service</module>
 </modules>
 
     <properties>
@@ -50,6 +51,13 @@
                 <groupId>com.github.loki4j</groupId>
                 <artifactId>loki-logback-appender</artifactId>
                 <version>${loki4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>2.29.0</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
         </dependencies>
     </dependencyManagement>
