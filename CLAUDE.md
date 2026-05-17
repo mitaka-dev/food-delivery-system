@@ -79,6 +79,5 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 | Skill | When to use |
 |-------|-------------|
-| `/plan-session` | Session start — reads PLAN.md, shows what's done and what's next |
 | `/logs [service]` | Tail logs for a specific service |
 | `/health` | Check health of all running services without starting anything |
