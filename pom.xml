@@ -24,6 +24,7 @@
     <module>basket-service</module>
     <module>kitchen-service</module>
     <module>delivery-service</module>
+    <module>review-service</module>
 </modules>
 
     <properties>
