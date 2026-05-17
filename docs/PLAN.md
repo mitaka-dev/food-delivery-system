@@ -17,7 +17,7 @@
 | Service | Port | Status |
 |---|---|---|
 | `common-libs` | — | `[x]` Done |
-| `gateway-service` | 8080 | `[x]` Done |
+| `gateway-service` | 8080 | `[x]` Removed (archived to `_retired/`) |
 | `user-service` | 8081 | `[x]` Done |
 | `analytics-service` | 8082 | `[x]` Done |
 | `order-service` | 8083 | `[x]` Done |
@@ -52,13 +52,7 @@
 - [x] Only ACTIVE users can authenticate
 
 ### gateway-service
-- [x] Global `JwtAuthenticationFilter` — validates tokens, whitelists public routes
-- [x] Forwards `X-User-Name` and `X-User-Role` headers to downstream services
-- [x] Rate limiting by IP address (5 req/s, burst 10 for registration)
-- [x] Route: `/api/v1/auth/**` → user-service (public)
-- [x] Route: `/api/v1/users` → user-service (public, rate-limited)
-- [x] Route: `/api/v1/orders/**` → order-service (placeholder, order-service not built yet)
-- [x] Actuator endpoints exposed
+- [x] **Removed** — archived to `_retired/gateway-service/`. Replaced by direct service port access locally; AWS API Gateway handles routing in production (see `docs/plan/architecture.md`, Terraform Phase 0).
 
 ### analytics-service
 - [x] Kafka consumer on `user-topics` (consumer group: analytics-group)
@@ -132,6 +126,20 @@ The full order flow following the same Saga pattern as user registration:
 ### 5. Miscellaneous
 - [x] Add gateway routes for product-service and payment-service
 - [x] Grafana dashboard panels for order/payment metrics
+
+## Migration to Production Architecture
+
+> See `docs/plan/` for the full forward-looking architecture. The migration plan is at `.claude/plans/ok-i-want-to-cosmic-graham.md`.
+
+| Phase | Description | Status |
+|---|---|---|
+| Phase 1 | Spring Boot 4.0 upgrade (3.5.x → 4.0.6), remove Spring Cloud | `[x]` Done |
+| Phase 2 | Remove gateway-service; direct port access locally | `[x]` Done |
+| Phase 3 | Align plan docs naming (common-libs, user-service, product-service) | `[x]` Done |
+| Phase 4 | New service skeletons (basket, kitchen, delivery, review, promotion, notification) | `[ ]` Not started |
+| Phase 5 | Hooks and skills via skill-creator plugin | `[ ]` Not started |
+
+---
 
 ## API Hardening
 

@@ -59,7 +59,7 @@ food-ordering-gitops          ← K8s manifests for ArgoCD to reconcile
 - Different access control: developers can merge service code freely, but production-manifest edits go through stricter review.
 - The "image tag bump" commit (post-CI artifact) belongs in its own history, not mixed with feature commits.
 
-**CI/CD doesn't get more complex.** Each service still has its own CodePipeline; pipelines use **path-filtered EventBridge triggers** so a push to `services/order-service/**` only triggers `order-pipeline`. A push to `platform-shared-libs/**` or `platform-bom/**` triggers all 10 service pipelines (rebuild everything that consumed the changed lib). One pipeline per service, just pointed at a single repo with a path filter — same fan-out as polyrepo.
+**CI/CD doesn't get more complex.** Each service still has its own CodePipeline; pipelines use **path-filtered EventBridge triggers** so a push to `services/order-service/**` only triggers `order-pipeline`. A push to `common-libs/**` or `platform-bom/**` triggers all 10 service pipelines (rebuild everything that consumed the changed lib). One pipeline per service, just pointed at a single repo with a path filter — same fan-out as polyrepo.
 
 The single-repo monorepo layout is documented in detail below in **Phase 0 Step 0.1** and **Phase 1**.
 
@@ -100,7 +100,7 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 - [Phase 2: Identity & Profile Service](#phase-2-identity--profile-service)
 - [Phase 3: Notification Service (Lambda)](#phase-3-notification-service-lambda)
 - [Phase 4: Promotion & Loyalty Service](#phase-4-promotion--loyalty-service)
-- [Phase 5: Restaurant Menu Service](#phase-5-restaurant-menu-service)
+- [Phase 5: Restaurant Menu Service](#phase-5-restaurant-product-service)
 - [Phase 6: Basket Service](#phase-6-basket-service)
 - [Phase 7: Payment Service](#phase-7-payment-service)
 - [Phase 8: Order Orchestrator Service](#phase-8-order-orchestrator-service)
@@ -135,7 +135,7 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
   - `food-ordering-platform/docs/developer-setup.md`
   - `food-ordering-platform/docs/architecture.md` (copy of the architecture reference, maintained alongside the code)
   - `food-ordering-platform/.envrc.template` (direnv: AWS_PROFILE, AWS_REGION, CODEARTIFACT_AUTH_TOKEN refresh)
-  - Empty top-level dirs: `services/`, `platform-shared-libs/`, `platform-bom/`, `platform-infra/`, `e2e-tests/`
+  - Empty top-level dirs: `services/`, `common-libs/`, `platform-bom/`, `platform-infra/`, `e2e-tests/`
   - `food-ordering-gitops/README.md` (companion repo, watched by ArgoCD)
   - `food-ordering-gitops/.gitignore`
   - Empty top-level dirs in gitops repo: `apps/`, `argocd/`
@@ -293,12 +293,12 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
   - `platform-infra/envs/shared/iam-cicd.tf`
   - `platform-infra/envs/shared/codeartifact.tf`
 - **Key details**:
-  - 10 ECR repos (one per service): `identity-service`, `menu-service`, ..., `notification-service`
+  - 10 ECR repos (one per service): `user-service`, `product-service`, ..., `notification-service`
   - Image scan on push enabled (Inspector v2)
   - Lifecycle policy: keep last 30 untagged images, keep tags `prod-*` forever
   - Image tag immutability enabled
   - **CodeArtifact domain**: `{org}-platform`. Two repos:
-    - `internal` — where `platform-bom` and `platform-shared-libs/*` modules publish.
+    - `internal` — where `platform-bom` and `common-libs/*` modules publish.
     - `maven-central` — public upstream proxy. The `internal` repo declares `maven-central` as upstream so transitive deps resolve through it.
   - CodeBuild service role with permissions for ECR push, CodeArtifact read+publish, S3 artifact bucket, **MSK produce/consume during integration tests**.
   - CodePipeline service role.
@@ -352,9 +352,9 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 ### Step 1.1: Root reactor POM + platform-bom (Bill of Materials)
 - [ ] **Objective**: Create the root `pom.xml` (Maven reactor for the entire monorepo), the `platform-bom` module that pins all dependency versions, and configure CodeArtifact publication. This is the foundation everything else inherits from.
 - **Files to create**:
-  - `food-ordering-platform/pom.xml` (root reactor — declares `<modules>` for `platform-bom`, `platform-shared-libs`, all services)
+  - `food-ordering-platform/pom.xml` (root reactor — declares `<modules>` for `platform-bom`, `common-libs`, all services)
   - `food-ordering-platform/platform-bom/pom.xml` (BOM with `<dependencyManagement>` only, no source code)
-  - `food-ordering-platform/platform-shared-libs/pom.xml` (parent for shared modules — empty `<modules>` for now, populated in 1.2–1.4)
+  - `food-ordering-platform/common-libs/pom.xml` (parent for shared modules — empty `<modules>` for now, populated in 1.2–1.4)
   - `food-ordering-platform/.mvn/maven.config` (passes `-Pcoverage` etc. consistently)
   - `food-ordering-platform/.mvn/settings.xml` (template; CodeArtifact mirror config)
   - `food-ordering-platform/scripts/codeartifact-login.sh`
@@ -375,7 +375,7 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
   - **Group ID**: `com.{org}.platform` for the BOM and shared libs; `com.{org}.foodordering.{service}` for service modules.
   - **Versioning**: Platform-wide rolling version `1.0.0-SNAPSHOT` for development; releases tagged as `1.0.0`, `1.1.0`, etc. — bumped together.
   - **Publication**: `mvn deploy` from CI publishes the BOM and all shared libs to CodeArtifact `internal` repo. Service builds resolve them from there (services don't publish).
-  - **Reactor module list** in root POM: `platform-bom`, `platform-shared-libs/*`, `services/*`. The reactor is what makes `mvn -pl services/order-service -am verify` work — Maven knows the dependency graph and rebuilds upstream modules if needed.
+  - **Reactor module list** in root POM: `platform-bom`, `common-libs/*`, `services/*`. The reactor is what makes `mvn -pl services/order-service -am verify` work — Maven knows the dependency graph and rebuilds upstream modules if needed.
   - The `.mvn/settings.xml` template uses CodeArtifact as the mirror for everything, so CI builds never hit Maven Central directly.
 - **Acceptance criteria**: `mvn -B verify` from the monorepo root succeeds (modules empty but reactor resolves). `mvn -B deploy -pl platform-bom -DskipTests` publishes `platform-bom:1.0.0-SNAPSHOT` to CodeArtifact. A throwaway service POM in `services/test-service/` that imports the BOM resolves all listed dependencies without specifying versions.
 - **Dependencies**: 0.9
@@ -383,20 +383,20 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 ### Step 1.2: common-events and common-dto modules
 - [ ] **Objective**: Define shared event payload types and common DTOs with schema versioning. These are the wire contracts every service shares.
 - **Files to create**:
-  - `platform-shared-libs/common-events/pom.xml`
-  - `platform-shared-libs/common-events/src/main/java/.../events/UserCreatedEvent.java`
-  - `platform-shared-libs/common-events/src/main/java/.../events/OrderPaidEvent.java`
-  - `platform-shared-libs/common-events/src/main/java/.../events/PaymentSuccessEvent.java`
-  - `platform-shared-libs/common-events/src/main/java/.../events/PaymentFailedEvent.java`
-  - `platform-shared-libs/common-events/src/main/java/.../events/FoodReadyEvent.java`
-  - `platform-shared-libs/common-events/src/main/java/.../events/OrderDeliveredEvent.java`
-  - `platform-shared-libs/common-events/src/main/java/.../events/EventEnvelope.java` (wrapper with `eventId`, `traceId`, `occurredAt`, `schemaVersion`)
-  - `platform-shared-libs/common-events/src/main/avro/*.avsc` (Avro schemas, one per event, registered in Glue Schema Registry)
-  - `platform-shared-libs/common-events/src/main/proto/menu.proto`, `promotion.proto` (gRPC service contracts)
-  - `platform-shared-libs/common-dto/pom.xml`
-  - `platform-shared-libs/common-dto/src/main/java/.../dto/Money.java`
-  - `platform-shared-libs/common-dto/src/main/java/.../dto/Address.java`
-  - `platform-shared-libs/common-dto/src/main/java/.../dto/PaginationCursor.java`
+  - `common-libs/common-events/pom.xml`
+  - `common-libs/common-events/src/main/java/.../events/UserCreatedEvent.java`
+  - `common-libs/common-events/src/main/java/.../events/OrderPaidEvent.java`
+  - `common-libs/common-events/src/main/java/.../events/PaymentSuccessEvent.java`
+  - `common-libs/common-events/src/main/java/.../events/PaymentFailedEvent.java`
+  - `common-libs/common-events/src/main/java/.../events/FoodReadyEvent.java`
+  - `common-libs/common-events/src/main/java/.../events/OrderDeliveredEvent.java`
+  - `common-libs/common-events/src/main/java/.../events/EventEnvelope.java` (wrapper with `eventId`, `traceId`, `occurredAt`, `schemaVersion`)
+  - `common-libs/common-events/src/main/avro/*.avsc` (Avro schemas, one per event, registered in Glue Schema Registry)
+  - `common-libs/common-events/src/main/proto/menu.proto`, `promotion.proto` (gRPC service contracts)
+  - `common-libs/common-dto/pom.xml`
+  - `common-libs/common-dto/src/main/java/.../dto/Money.java`
+  - `common-libs/common-dto/src/main/java/.../dto/Address.java`
+  - `common-libs/common-dto/src/main/java/.../dto/PaginationCursor.java`
 - **Key details**:
   - All event types are **immutable Java records** with JSpecify `@NonNull`/`@Nullable` annotations (Spring Boot 4 + Java 25 idiom).
   - Use Jackson `@JsonProperty` for stable wire format.
@@ -410,14 +410,14 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 ### Step 1.3: common-resilience module — Resilience4j + Idempotency
 - [ ] **Objective**: Centralize Resilience4j configurations and Spring auto-config that every service can apply with one annotation. **This is the module that `architecture.md` Section 4 references.**
 - **Files to create**:
-  - `platform-shared-libs/common-resilience/pom.xml`
-  - `platform-shared-libs/common-resilience/src/main/java/.../resilience/ResilienceAutoConfig.java`
-  - `platform-shared-libs/common-resilience/src/main/java/.../resilience/CircuitBreakerDefaults.java`
-  - `platform-shared-libs/common-resilience/src/main/java/.../resilience/RetryDefaults.java`
-  - `platform-shared-libs/common-resilience/src/main/java/.../resilience/TimeoutDefaults.java`
-  - `platform-shared-libs/common-resilience/src/main/java/.../resilience/IdempotencyKeyAspect.java`
-  - `platform-shared-libs/common-resilience/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`
-  - `platform-shared-libs/common-resilience/src/main/resources/application-resilience.yml` (default thresholds)
+  - `common-libs/common-resilience/pom.xml`
+  - `common-libs/common-resilience/src/main/java/.../resilience/ResilienceAutoConfig.java`
+  - `common-libs/common-resilience/src/main/java/.../resilience/CircuitBreakerDefaults.java`
+  - `common-libs/common-resilience/src/main/java/.../resilience/RetryDefaults.java`
+  - `common-libs/common-resilience/src/main/java/.../resilience/TimeoutDefaults.java`
+  - `common-libs/common-resilience/src/main/java/.../resilience/IdempotencyKeyAspect.java`
+  - `common-libs/common-resilience/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`
+  - `common-libs/common-resilience/src/main/resources/application-resilience.yml` (default thresholds)
 - **Key details**:
   - Default circuit breaker: sliding window 10, failure threshold 50%, wait 60s in open.
   - Default retry: 3 attempts, exponential backoff 100ms × 2, max 1s, jitter 0.5.
@@ -432,21 +432,21 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 ### Step 1.4: common-observability and common-outbox modules
 - [ ] **Objective**: Provide structured JSON logging, OTel trace propagation, and the outbox publisher abstraction (Postgres + Kafka destination + SQS destination).
 - **Files to create**:
-  - `platform-shared-libs/common-observability/pom.xml`
-  - `platform-shared-libs/common-observability/src/main/java/.../obs/LoggingAutoConfig.java`
-  - `platform-shared-libs/common-observability/src/main/java/.../obs/TraceContextFilter.java`
-  - `platform-shared-libs/common-observability/src/main/java/.../obs/KafkaTracePropagator.java`
-  - `platform-shared-libs/common-observability/src/main/java/.../obs/SqsTracePropagator.java`
-  - `platform-shared-libs/common-observability/src/main/resources/logback-spring.xml`
-  - `platform-shared-libs/common-outbox/pom.xml`
-  - `platform-shared-libs/common-outbox/src/main/java/.../outbox/OutboxEvent.java` (entity)
-  - `platform-shared-libs/common-outbox/src/main/java/.../outbox/OutboxRepository.java` (interface)
-  - `platform-shared-libs/common-outbox/src/main/java/.../outbox/JdbcOutboxRepository.java`
-  - `platform-shared-libs/common-outbox/src/main/java/.../outbox/OutboxPublisher.java` (Spring `@Scheduled`)
-  - `platform-shared-libs/common-outbox/src/main/java/.../outbox/KafkaOutboxDispatcher.java`
-  - `platform-shared-libs/common-outbox/src/main/java/.../outbox/SqsOutboxDispatcher.java`
-  - `platform-shared-libs/common-outbox/src/main/java/.../outbox/OutboxRouter.java` (decides Kafka vs SQS based on row's `destination_type`)
-  - `platform-shared-libs/common-outbox/src/main/resources/db/migration/V1__outbox_table.sql`
+  - `common-libs/common-observability/pom.xml`
+  - `common-libs/common-observability/src/main/java/.../obs/LoggingAutoConfig.java`
+  - `common-libs/common-observability/src/main/java/.../obs/TraceContextFilter.java`
+  - `common-libs/common-observability/src/main/java/.../obs/KafkaTracePropagator.java`
+  - `common-libs/common-observability/src/main/java/.../obs/SqsTracePropagator.java`
+  - `common-libs/common-observability/src/main/resources/logback-spring.xml`
+  - `common-libs/common-outbox/pom.xml`
+  - `common-libs/common-outbox/src/main/java/.../outbox/OutboxEvent.java` (entity)
+  - `common-libs/common-outbox/src/main/java/.../outbox/OutboxRepository.java` (interface)
+  - `common-libs/common-outbox/src/main/java/.../outbox/JdbcOutboxRepository.java`
+  - `common-libs/common-outbox/src/main/java/.../outbox/OutboxPublisher.java` (Spring `@Scheduled`)
+  - `common-libs/common-outbox/src/main/java/.../outbox/KafkaOutboxDispatcher.java`
+  - `common-libs/common-outbox/src/main/java/.../outbox/SqsOutboxDispatcher.java`
+  - `common-libs/common-outbox/src/main/java/.../outbox/OutboxRouter.java` (decides Kafka vs SQS based on row's `destination_type`)
+  - `common-libs/common-outbox/src/main/resources/db/migration/V1__outbox_table.sql`
 - **Key details**:
   - Outbox row schema includes `destination_type` (`KAFKA` | `SQS`) and `destination` (topic name or queue ARN). The publisher reads, the router dispatches, the dispatcher publishes.
   - Structured JSON logs include `traceId`, `spanId`, `userId`, `service`, `version`, `level`, `logger`, `message`.
@@ -465,20 +465,20 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 
 > Goal: working registration + login + JWT issuance, with the outbox emitting `USER_CREATED` events. By end of phase, you can register a user via API Gateway and observe the event in CloudWatch logs of a placeholder consumer.
 
-### Step 2.1: identity-service skeleton + DB schema
+### Step 2.1: user-service skeleton + DB schema
 - [ ] **Objective**: Create the Spring Boot project, configure DB connection, run initial migrations.
 - **Files to create**:
-  - `services/identity-service/pom.xml`
-  - `services/identity-service/src/main/java/.../IdentityApplication.java`
-  - `services/identity-service/src/main/resources/application.yml`
-  - `services/identity-service/src/main/resources/application-staging.yml`
-  - `services/identity-service/src/main/resources/db/migration/V1__users.sql`
-  - `services/identity-service/src/main/resources/db/migration/V2__refresh_tokens.sql`
-  - `services/identity-service/src/main/resources/db/migration/V3__outbox.sql` (use shared snippet from Step 1.4)
-  - `services/identity-service/buildspec.yml`
-  - `services/identity-service/Dockerfile`
+  - `services/user-service/pom.xml`
+  - `services/user-service/src/main/java/.../IdentityApplication.java`
+  - `services/user-service/src/main/resources/application.yml`
+  - `services/user-service/src/main/resources/application-staging.yml`
+  - `services/user-service/src/main/resources/db/migration/V1__users.sql`
+  - `services/user-service/src/main/resources/db/migration/V2__refresh_tokens.sql`
+  - `services/user-service/src/main/resources/db/migration/V3__outbox.sql` (use shared snippet from Step 1.4)
+  - `services/user-service/buildspec.yml`
+  - `services/user-service/Dockerfile`
 - **Key details**:
-  - Depends on platform-shared-libs (common-dto, common-exceptions, common-resilience, common-observability, common-outbox, common-events)
+  - Depends on common-libs (common-dto, common-exceptions, common-resilience, common-observability, common-outbox, common-events)
   - Schema: `users(id UUID PK, email UNIQUE, password_hash, role, locale, created_at, updated_at)`, `refresh_tokens(id, user_id, token_hash, expires_at, revoked)`
   - Argon2id password hashing (Spring Security `Argon2PasswordEncoder`)
   - HikariCP pool: max 10 connections per pod
@@ -491,13 +491,13 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 ### Step 2.2: Registration with outbox event
 - [ ] **Objective**: Implement `POST /v1/auth/register` that writes user + outbox row in one transaction.
 - **Files to create**:
-  - `services/identity-service/src/main/java/.../api/AuthController.java`
-  - `services/identity-service/src/main/java/.../service/UserRegistrationService.java`
-  - `services/identity-service/src/main/java/.../domain/User.java` (entity)
-  - `services/identity-service/src/main/java/.../domain/UserRepository.java`
-  - `services/identity-service/src/main/java/.../api/dto/RegisterRequest.java`
-  - `services/identity-service/src/main/java/.../api/dto/RegisterResponse.java`
-  - `services/identity-service/src/test/java/.../service/UserRegistrationServiceIT.java`
+  - `services/user-service/src/main/java/.../api/AuthController.java`
+  - `services/user-service/src/main/java/.../service/UserRegistrationService.java`
+  - `services/user-service/src/main/java/.../domain/User.java` (entity)
+  - `services/user-service/src/main/java/.../domain/UserRepository.java`
+  - `services/user-service/src/main/java/.../api/dto/RegisterRequest.java`
+  - `services/user-service/src/main/java/.../api/dto/RegisterResponse.java`
+  - `services/user-service/src/test/java/.../service/UserRegistrationServiceIT.java`
 - **Key details**:
   - `@Transactional` method writes both `users` row and `outbox` row containing `UserCreatedEvent`
   - Validate email format, password strength (NIST 800-63B compliant)
@@ -511,14 +511,14 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 ### Step 2.3: Login + JWT issuance + refresh token rotation
 - [ ] **Objective**: Implement `POST /v1/auth/login`, `POST /v1/auth/refresh`, `POST /v1/auth/logout`.
 - **Files to create**:
-  - `services/identity-service/src/main/java/.../service/AuthenticationService.java`
-  - `services/identity-service/src/main/java/.../service/JwtIssuer.java`
-  - `services/identity-service/src/main/java/.../security/SecurityConfig.java`
-  - `services/identity-service/src/main/java/.../domain/RefreshToken.java`
-  - `services/identity-service/src/main/java/.../domain/RefreshTokenRepository.java`
-  - `services/identity-service/src/main/java/.../api/dto/LoginRequest.java`
-  - `services/identity-service/src/main/java/.../api/dto/TokenResponse.java`
-  - `services/identity-service/src/test/java/.../api/AuthControllerIT.java`
+  - `services/user-service/src/main/java/.../service/AuthenticationService.java`
+  - `services/user-service/src/main/java/.../service/JwtIssuer.java`
+  - `services/user-service/src/main/java/.../security/SecurityConfig.java`
+  - `services/user-service/src/main/java/.../domain/RefreshToken.java`
+  - `services/user-service/src/main/java/.../domain/RefreshTokenRepository.java`
+  - `services/user-service/src/main/java/.../api/dto/LoginRequest.java`
+  - `services/user-service/src/main/java/.../api/dto/TokenResponse.java`
+  - `services/user-service/src/test/java/.../api/AuthControllerIT.java`
 - **Key details**:
   - JWT with RS256, private key from Secrets Manager, public key published to SSM Parameter Store on app startup
   - Access token TTL: 15 minutes; refresh token TTL: 30 days
@@ -532,11 +532,11 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 ### Step 2.4: User profile endpoints + security filters
 - [ ] **Objective**: Implement `GET /v1/users/me`, `PATCH /v1/users/me` and the JWT validation filter chain.
 - **Files to create**:
-  - `services/identity-service/src/main/java/.../api/UserController.java`
-  - `services/identity-service/src/main/java/.../service/UserProfileService.java`
-  - `services/identity-service/src/main/java/.../security/JwtAuthenticationFilter.java`
-  - `services/identity-service/src/main/java/.../security/JwtPublicKeyResolver.java`
-  - `services/identity-service/src/test/java/.../api/UserControllerIT.java`
+  - `services/user-service/src/main/java/.../api/UserController.java`
+  - `services/user-service/src/main/java/.../service/UserProfileService.java`
+  - `services/user-service/src/main/java/.../security/JwtAuthenticationFilter.java`
+  - `services/user-service/src/main/java/.../security/JwtPublicKeyResolver.java`
+  - `services/user-service/src/test/java/.../api/UserControllerIT.java`
 - **Key details**:
   - Filter validates JWT signature, expiration, and `jti` denylist
   - On valid token, populates `SecurityContext` with `Authentication` containing role + userId
@@ -547,18 +547,18 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 - **Dependencies**: 2.3
 
 ### Step 2.5: K8s manifests + ArgoCD application
-- [ ] **Objective**: Wire identity-service into the GitOps repo so ArgoCD deploys it to staging.
+- [ ] **Objective**: Wire user-service into the GitOps repo so ArgoCD deploys it to staging.
 - **Files to create**:
-  - `food-ordering-gitops/apps/identity-service/base/deployment.yaml`
-  - `food-ordering-gitops/apps/identity-service/base/service.yaml`
-  - `food-ordering-gitops/apps/identity-service/base/hpa.yaml`
-  - `food-ordering-gitops/apps/identity-service/base/serviceaccount.yaml` (with IRSA annotation)
-  - `food-ordering-gitops/apps/identity-service/base/externalsecret.yaml`
-  - `food-ordering-gitops/apps/identity-service/base/servicemonitor.yaml`
-  - `food-ordering-gitops/apps/identity-service/base/kustomization.yaml`
-  - `food-ordering-gitops/apps/identity-service/overlays/staging/{kustomization.yaml,image-tag.yaml,replicas.yaml}`
-  - `food-ordering-gitops/apps/identity-service/overlays/production/...`
-  - `food-ordering-gitops/argocd/applications/identity-service-staging.yaml`
+  - `food-ordering-gitops/apps/user-service/base/deployment.yaml`
+  - `food-ordering-gitops/apps/user-service/base/service.yaml`
+  - `food-ordering-gitops/apps/user-service/base/hpa.yaml`
+  - `food-ordering-gitops/apps/user-service/base/serviceaccount.yaml` (with IRSA annotation)
+  - `food-ordering-gitops/apps/user-service/base/externalsecret.yaml`
+  - `food-ordering-gitops/apps/user-service/base/servicemonitor.yaml`
+  - `food-ordering-gitops/apps/user-service/base/kustomization.yaml`
+  - `food-ordering-gitops/apps/user-service/overlays/staging/{kustomization.yaml,image-tag.yaml,replicas.yaml}`
+  - `food-ordering-gitops/apps/user-service/overlays/production/...`
+  - `food-ordering-gitops/argocd/applications/user-service-staging.yaml`
 - **Key details**:
   - Deployment: 2 replicas staging / 4 prod, init container runs Flyway migrate
   - HPA: scale on CPU 70%, min 2 max 10
@@ -567,7 +567,7 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
   - ServiceMonitor for Prometheus to scrape `/actuator/prometheus`
   - PodDisruptionBudget: minAvailable 1
   - Resources: 500m CPU / 512Mi mem requests, 1 CPU / 1Gi limits
-- **Acceptance criteria**: Push to staging branch of food-ordering-gitops causes ArgoCD to deploy identity-service. `kubectl get pods -n identity` shows running pods. Public API Gateway URL `POST /v1/auth/register` succeeds end-to-end.
+- **Acceptance criteria**: Push to staging branch of food-ordering-gitops causes ArgoCD to deploy user-service. `kubectl get pods -n identity` shows running pods. Public API Gateway URL `POST /v1/auth/register` succeeds end-to-end.
 - **Dependencies**: 0.11, 2.4
 
 ---
@@ -695,7 +695,7 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 ### Step 4.3: gRPC validation endpoint for Order Service
 - [ ] **Objective**: Expose `ValidateCode`, `RedeemCode`, `RestoreCode` gRPC methods.
 - **Files to create**:
-  - `platform-shared-libs/common-events/src/main/proto/promotion.proto`
+  - `common-libs/common-events/src/main/proto/promotion.proto`
   - `services/promotion-service/src/main/java/.../grpc/PromotionGrpcService.java`
   - `services/promotion-service/src/main/java/.../service/PromoValidationService.java`
   - `services/promotion-service/src/test/java/.../grpc/PromotionGrpcServiceTest.java`
@@ -730,17 +730,17 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 
 > Goal: a working menu service with cache-aside, image upload via pre-signed URLs, gRPC verification endpoint, and the public search API.
 
-### Step 5.1: menu-service skeleton + DynamoDB integration
+### Step 5.1: product-service skeleton + DynamoDB integration
 - [ ] **Objective**: Spring Boot service with AWS SDK v2 DynamoDB client and basic CRUD.
 - **Files to create**:
-  - `services/menu-service/pom.xml`
-  - `services/menu-service/src/main/java/.../MenuApplication.java`
-  - `services/menu-service/src/main/java/.../config/DynamoDbConfig.java`
-  - `services/menu-service/src/main/java/.../domain/Menu.java`
-  - `services/menu-service/src/main/java/.../domain/MenuItem.java`
-  - `services/menu-service/src/main/java/.../domain/MenuRepository.java`
-  - `services/menu-service/src/main/resources/application.yml`
-  - `services/menu-service/Dockerfile`
+  - `services/product-service/pom.xml`
+  - `services/product-service/src/main/java/.../MenuApplication.java`
+  - `services/product-service/src/main/java/.../config/DynamoDbConfig.java`
+  - `services/product-service/src/main/java/.../domain/Menu.java`
+  - `services/product-service/src/main/java/.../domain/MenuItem.java`
+  - `services/product-service/src/main/java/.../domain/MenuRepository.java`
+  - `services/product-service/src/main/resources/application.yml`
+  - `services/product-service/Dockerfile`
 - **Key details**:
   - DynamoDB Enhanced Client (Java SDK v2)
   - Schema: PK = `RESTAURANT#{restaurantId}`, SK = `MENU` for the full menu document; SK = `ITEM#{itemId}` for individual items
@@ -753,12 +753,12 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 ### Step 5.2: Public REST endpoints + caching layer
 - [ ] **Objective**: Implement `GET /v1/restaurants/{id}/menu` and `GET /v1/restaurants/search` with cache-aside.
 - **Files to create**:
-  - `services/menu-service/src/main/java/.../api/MenuController.java`
-  - `services/menu-service/src/main/java/.../service/MenuService.java`
-  - `services/menu-service/src/main/java/.../cache/MenuCache.java`
-  - `services/menu-service/src/main/java/.../cache/RedisCacheConfig.java`
-  - `services/menu-service/src/main/resources/application-cache.yml`
-  - `services/menu-service/src/test/java/.../service/MenuServiceCacheIT.java`
+  - `services/product-service/src/main/java/.../api/MenuController.java`
+  - `services/product-service/src/main/java/.../service/MenuService.java`
+  - `services/product-service/src/main/java/.../cache/MenuCache.java`
+  - `services/product-service/src/main/java/.../cache/RedisCacheConfig.java`
+  - `services/product-service/src/main/resources/application-cache.yml`
+  - `services/product-service/src/test/java/.../service/MenuServiceCacheIT.java`
 - **Key details**:
   - Cache key: `menu:v1:restaurant:{restaurantId}`, TTL 30 min
   - Cache-aside: cache → miss → DynamoDB → populate → return
@@ -772,11 +772,11 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 ### Step 5.3: Restaurant-owner write endpoints + S3 image uploads
 - [ ] **Objective**: Restaurant owners can edit menus; image uploads go directly to S3 via pre-signed URLs.
 - **Files to create**:
-  - `services/menu-service/src/main/java/.../api/MenuAdminController.java`
-  - `services/menu-service/src/main/java/.../service/MenuMutationService.java`
-  - `services/menu-service/src/main/java/.../service/ImageUploadService.java`
-  - `services/menu-service/src/main/java/.../security/RestaurantOwnerAuthorizer.java`
-  - `services/menu-service/src/test/java/.../api/MenuAdminControllerIT.java`
+  - `services/product-service/src/main/java/.../api/MenuAdminController.java`
+  - `services/product-service/src/main/java/.../service/MenuMutationService.java`
+  - `services/product-service/src/main/java/.../service/ImageUploadService.java`
+  - `services/product-service/src/main/java/.../security/RestaurantOwnerAuthorizer.java`
+  - `services/product-service/src/test/java/.../api/MenuAdminControllerIT.java`
 - **Key details**:
   - JWT must include `role=RESTAURANT_OWNER` AND `restaurantId` matching the resource
   - `POST /v1/restaurants/{id}/menu/items` and `PATCH /v1/menu/items/{itemId}`
@@ -790,9 +790,9 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 ### Step 5.4: gRPC server for internal verification
 - [ ] **Objective**: Expose `MenuService.VerifyItem(restaurantId, itemId)` for Basket and Order services.
 - **Files to create**:
-  - `platform-shared-libs/common-events/src/main/proto/menu.proto`
-  - `services/menu-service/src/main/java/.../grpc/MenuGrpcService.java`
-  - `services/menu-service/src/test/java/.../grpc/MenuGrpcServiceTest.java`
+  - `common-libs/common-events/src/main/proto/menu.proto`
+  - `services/product-service/src/main/java/.../grpc/MenuGrpcService.java`
+  - `services/product-service/src/test/java/.../grpc/MenuGrpcServiceTest.java`
 - **Key details**:
   - Returns `ItemAvailability { exists, available_now, current_price, restaurant_paused }`
   - `available_now` considers menu schedule (e.g., breakfast 06:00–11:00)
@@ -805,13 +805,13 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 ### Step 5.5: RESTAURANT_PAUSED listener + manifests + deployment
 - [ ] **Objective**: Subscribe to Kitchen events to hide overloaded restaurants. Deploy to staging.
 - **Files to create**:
-  - `services/menu-service/src/main/java/.../listener/RestaurantPausedListener.java`
-  - `services/menu-service/src/main/java/.../domain/RestaurantStatus.java` (DDB item)
-  - `food-ordering-gitops/apps/menu-service/base/...`
-  - `food-ordering-gitops/apps/menu-service/overlays/{staging,production}/...`
-  - `food-ordering-gitops/argocd/applications/menu-service-staging.yaml`
+  - `services/product-service/src/main/java/.../listener/RestaurantPausedListener.java`
+  - `services/product-service/src/main/java/.../domain/RestaurantStatus.java` (DDB item)
+  - `food-ordering-gitops/apps/product-service/base/...`
+  - `food-ordering-gitops/apps/product-service/overlays/{staging,production}/...`
+  - `food-ordering-gitops/argocd/applications/product-service-staging.yaml`
 - **Key details**:
-  - **Kafka consumer** subscribed to topic `kitchen-events` with consumer group `menu-service`, filtering on `eventType` header (`RESTAURANT_PAUSED`, `RESTAURANT_RESUMED`)
+  - **Kafka consumer** subscribed to topic `kitchen-events` with consumer group `product-service`, filtering on `eventType` header (`RESTAURANT_PAUSED`, `RESTAURANT_RESUMED`)
   - Updates `RestaurantStatus` DDB row with `paused = true/false` and `pausedAt`
   - Search and `VerifyItem` filter out paused restaurants
   - Auto-resume after configurable idle period (Kitchen emits `RESTAURANT_RESUMED`)
@@ -1244,7 +1244,7 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
   - `food-ordering-gitops/apps/kitchen-service/overlays/{staging,production}/...`
   - `food-ordering-gitops/argocd/applications/kitchen-service-staging.yaml`
 - **Key details**:
-  - Standard manifest set following the identity-service template
+  - Standard manifest set following the user-service template
   - 2 replicas staging / 3 prod
   - HPA on RPS
 - **Acceptance criteria**: ArgoCD shows kitchen-service Healthy. End-to-end: order paid → ticket appears in restaurant POS view (returned by GET endpoint).
@@ -1448,9 +1448,9 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 ### Step 12.3: AWS X-Ray distributed tracing across services
 - [ ] **Objective**: Trace context propagates through HTTP, gRPC, and SQS so a single trace shows the full saga.
 - **Files to create**:
-  - `platform-shared-libs/common-observability/src/main/java/.../obs/XRayConfig.java`
-  - `platform-shared-libs/common-observability/src/main/java/.../obs/SqsTracePropagator.java`
-  - `platform-shared-libs/common-observability/src/main/java/.../obs/GrpcTracingInterceptor.java`
+  - `common-libs/common-observability/src/main/java/.../obs/XRayConfig.java`
+  - `common-libs/common-observability/src/main/java/.../obs/SqsTracePropagator.java`
+  - `common-libs/common-observability/src/main/java/.../obs/GrpcTracingInterceptor.java`
   - `food-ordering-gitops/apps/observability/otel-collector/...`
 - **Key details**:
   - OpenTelemetry Java agent attached to every service (via JVM `-javaagent:` flag in Dockerfile)
@@ -1498,14 +1498,14 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
   - **Path-filter Lambda** receives EventBridge `CodeCommit Repository State Change` events for `food-ordering-platform`. It uses `git diff --name-only` (via the CodeCommit GetDifferences API) between the previous and new commits to determine which top-level directories changed.
   - Routing logic the Lambda implements:
     - Touched `services/{name}/**` → start `pipeline-{name}-staging`
-    - Touched `platform-shared-libs/**` or `platform-bom/**` → start ALL 10 service pipelines (parallel)
+    - Touched `common-libs/**` or `platform-bom/**` → start ALL 10 service pipelines (parallel)
     - Touched `platform-infra/**` → start `pipeline-platform-infra-staging` (Terraform plan + apply with manual approval)
     - Touched `e2e-tests/**` → start `pipeline-e2e-tests`
   - The Lambda calls `codepipeline:StartPipelineExecution` on each affected pipeline.
   - **Approval rules** on `food-ordering-platform/main`: 1 approval required, all status checks (build of changed services) must pass before merge.
   - **Approval rules** on `food-ordering-gitops/main`: 2 approvals for `apps/**/overlays/production/**` paths only (production manifest changes need extra eyeballs).
   - SSH key (already provisioned in Step 0.11) is what ArgoCD uses to read `food-ordering-gitops`. CodeBuild gitops-bump jobs use a separate, write-scoped IAM user with HTTPS git credentials in Secrets Manager.
-- **Acceptance criteria**: Pushing a commit that touches only `services/identity-service/**` triggers `pipeline-identity-service-staging` and no other pipelines. Pushing a commit that touches `platform-bom/pom.xml` triggers all 10 service pipelines.
+- **Acceptance criteria**: Pushing a commit that touches only `services/user-service/**` triggers `pipeline-user-service-staging` and no other pipelines. Pushing a commit that touches `platform-bom/pom.xml` triggers all 10 service pipelines.
 - **Dependencies**: 0.9, 0.11
 
 ### Step 13.2: Reusable buildspec templates + monorepo helper scripts
@@ -1525,12 +1525,12 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
   - `package-and-push.yml`: `cd $SERVICE_PATH && docker buildx build --platform linux/amd64,linux/arm64 ...`, tag = git SHA, push to ECR.
   - `gitops-bump.yml`: clones `food-ordering-gitops`, edits `apps/$SERVICE/overlays/$ENV/image-tag.yaml`, commits with `chore(deploy): $SERVICE → $TAG [$ENV]`, pushes. ArgoCD picks up within ~1 minute.
   - `smoke-test.yml`: hits service health endpoint in target env, runs k6 perf script with SLO thresholds.
-  - All buildspecs use the **monorepo root** as `CODEBUILD_SRC_DIR` and rely on `SERVICE_PATH` (e.g., `services/identity-service`) being set per pipeline.
+  - All buildspecs use the **monorepo root** as `CODEBUILD_SRC_DIR` and rely on `SERVICE_PATH` (e.g., `services/user-service`) being set per pipeline.
 - **Acceptance criteria**: A test service using these buildspecs builds, tests, scans, and pushes an image to ECR successfully. Modifying a shared lib triggers a rebuild of dependent services thanks to `mvn -am`.
 - **Dependencies**: 13.1
 
-### Step 13.3: CodePipeline Terraform module + first pipeline (identity-service staging)
-- [ ] **Objective**: Reusable Terraform module that defines the full pipeline; instantiate for identity-service staging deployment as the proving ground.
+### Step 13.3: CodePipeline Terraform module + first pipeline (user-service staging)
+- [ ] **Objective**: Reusable Terraform module that defines the full pipeline; instantiate for user-service staging deployment as the proving ground.
 - **Files to create**:
   - `platform-infra/modules/service-pipeline/main.tf`
   - `platform-infra/modules/service-pipeline/variables.tf`
@@ -1539,20 +1539,20 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
   - `platform-infra/modules/service-pipeline/eventbridge-trigger.tf`
   - `platform-infra/envs/staging/pipelines/identity-pipeline.tf`
 - **Key details**:
-  - Module variables: `service_name`, `service_path` (e.g., `services/identity-service`), `java_version` (default `25`), `has_database` (toggles PG Testcontainer), `has_grpc`, `has_kafka` (toggles Kafka Testcontainer), `target_env`.
+  - Module variables: `service_name`, `service_path` (e.g., `services/user-service`), `java_version` (default `25`), `has_database` (toggles PG Testcontainer), `has_grpc`, `has_kafka` (toggles Kafka Testcontainer), `target_env`.
   - The module **does not** create its own EventBridge rule — instead it registers the pipeline with the path-filter Lambda from 13.1 (via SSM Parameter Store config).
   - Pipeline stages match `architecture.md` Section 10.4: Source (CodeCommit `food-ordering-platform`) → Build → Test (parallel) → IntegrationTest → SAST/SCA → PackageAndPush → InspectorScan → DeployStaging (gitops bump) → SmokeTest → ProductionApproval → DeployProduction.
   - Inspector scan as a Lambda action that polls Inspector v2 API for image findings, fails on Critical.
   - All artifacts stored in a per-pipeline S3 bucket with KMS encryption + 90-day lifecycle.
   - Pipeline events to EventBridge → SNS → Slack via Chatbot.
-- **Acceptance criteria**: Push to `services/identity-service/**` on the monorepo's main branch triggers `pipeline-identity-service-staging`, which runs all stages → image lands in ECR → `food-ordering-gitops` gets the bump commit → ArgoCD deploys to staging → smoke test passes.
+- **Acceptance criteria**: Push to `services/user-service/**` on the monorepo's main branch triggers `pipeline-user-service-staging`, which runs all stages → image lands in ECR → `food-ordering-gitops` gets the bump commit → ArgoCD deploys to staging → smoke test passes.
 - **Dependencies**: 13.2, 2.5
 
 ### Step 13.4: Production deployment with manual approval + Argo Rollouts canary
 - [ ] **Objective**: Add the production deployment branch with manual approval and progressive canary.
 - **Files to create**:
   - `platform-infra/envs/production/pipelines/identity-pipeline.tf`
-  - `food-ordering-gitops/apps/identity-service/overlays/production/rollout.yaml`
+  - `food-ordering-gitops/apps/user-service/overlays/production/rollout.yaml`
   - `food-ordering-gitops/apps/_argo-rollouts/install.yaml`
   - `food-ordering-gitops/apps/_argo-rollouts/analysis-template-error-rate.yaml`
 - **Key details**:
@@ -1561,7 +1561,7 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
   - Argo Rollouts `Rollout` replaces `Deployment` for production overlay; canary 10% → 50% → 100% with 5/10/0 minute pauses.
   - AnalysisTemplate queries Prometheus for error rate; `errorRate > 0.01` aborts and rolls back automatically.
   - Auto-rollback also tied to CloudWatch alarm via Lambda hook (defense in depth).
-- **Acceptance criteria**: Promote identity-service to production via approval. Canary progresses through 10/50/100. Inject errors during 50% phase → automated rollback.
+- **Acceptance criteria**: Promote user-service to production via approval. Canary progresses through 10/50/100. Inject errors during 50% phase → automated rollback.
 - **Dependencies**: 13.3
 
 ### Step 13.5: Replicate pipelines for all 10 services
@@ -1583,7 +1583,7 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
   - **Payment** pipeline has a business-hours gate on production deploys (Lambda check before approval action).
   - **Order Service** pipeline has an additional integration test stage running full saga simulation with **Testcontainers Kafka** + LocalStack.
   - All pipelines source from `food-ordering-platform` (monorepo); the path-filter Lambda determines which one(s) to start on a given commit.
-- **Acceptance criteria**: All 10 service pipelines visible in CodePipeline console. Pushing to `services/{any}/**` triggers the matching pipeline only. Pushing to `platform-shared-libs/**` triggers all 10.
+- **Acceptance criteria**: All 10 service pipelines visible in CodePipeline console. Pushing to `services/{any}/**` triggers the matching pipeline only. Pushing to `common-libs/**` triggers all 10.
 - **Dependencies**: 13.4
 
 ### Step 13.6: Pipeline notifications + ArgoCD sync notifications

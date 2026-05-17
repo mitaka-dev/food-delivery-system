@@ -901,7 +901,7 @@ Goal: every commit is built, tested, scanned, and deployed automatically through
 
 ### 10.1 Repository Layout
 
-**Monorepo for code, separate repo for K8s manifests** — two CodeCommit repos total. Each service still gets its own CodePipeline; pipelines use **path-filtered EventBridge triggers** so a push to `services/order-service/**` only triggers `order-pipeline`, not all 10. A push to `platform-shared-libs/**` or `platform-bom/**` triggers all 10 service pipelines (rebuild everything that consumed the changed lib). Same fan-out as polyrepo, much better developer experience.
+**Monorepo for code, separate repo for K8s manifests** — two CodeCommit repos total. Each service still gets its own CodePipeline; pipelines use **path-filtered EventBridge triggers** so a push to `services/order-service/**` only triggers `order-pipeline`, not all 10. A push to `common-libs/**` or `platform-bom/**` triggers all 10 service pipelines (rebuild everything that consumed the changed lib). Same fan-out as polyrepo, much better developer experience.
 
 ```
 CodeCommit repos (just two):
@@ -909,7 +909,7 @@ CodeCommit repos (just two):
 food-ordering-platform/                     ← code + infra + tests
 ├── platform-bom/                           ← Maven Bill of Materials, pins ALL versions
 │   └── pom.xml
-├── platform-shared-libs/                   ← Maven multi-module shared libraries
+├── common-libs/                   ← Maven multi-module shared libraries
 │   ├── pom.xml                              (parent for shared libs)
 │   ├── common-dto/
 │   ├── common-events/                       (event payload schemas + .proto files)
@@ -918,8 +918,8 @@ food-ordering-platform/                     ← code + infra + tests
 │   ├── common-observability/                (logging, OTel, X-Ray)
 │   └── common-outbox/                       (Postgres outbox abstraction)
 ├── services/                               ← one folder per microservice
-│   ├── identity-service/
-│   ├── menu-service/
+│   ├── user-service/
+│   ├── product-service/
 │   ├── basket-service/
 │   ├── order-service/
 │   ├── kitchen-service/
@@ -940,7 +940,7 @@ food-ordering-platform/                     ← code + infra + tests
 
 food-ordering-gitops/                       ← K8s manifests, watched by ArgoCD
 ├── apps/
-│   ├── identity-service/
+│   ├── user-service/
 │   │   ├── base/
 │   │   └── overlays/{staging,production}/
 │   └── ... (one per service)
@@ -971,7 +971,7 @@ Each service's CodePipeline uses an **EventBridge rule** as its source trigger i
 
 A small Lambda inspects the commit's changed paths (via `git diff --name-only`) and decides which pipelines to start. Logic:
 - Push touches `services/order-service/**` → start `order-pipeline` only.
-- Push touches `platform-shared-libs/**` or `platform-bom/**` → start all 10 service pipelines (parallel rebuilds).
+- Push touches `common-libs/**` or `platform-bom/**` → start all 10 service pipelines (parallel rebuilds).
 - Push touches `platform-infra/**` → start `infra-pipeline` (Terraform plan + apply with manual approval).
 - Push touches `e2e-tests/**` → start `e2e-pipeline` (test against staging only, no service rebuild).
 
@@ -1058,7 +1058,7 @@ Pipeline name: pipeline-{service-name}
 Trigger:
   EventBridge rule on CodeCommit repository `food-ordering-platform`
   Filter: changes under `services/{service-name}/**`
-       OR `platform-shared-libs/**`
+       OR `common-libs/**`
        OR `platform-bom/**`
   Branch: main
 
@@ -1121,7 +1121,7 @@ version: 0.2
 env:
   variables:
     JAVA_HOME: /usr/lib/jvm/java-25-amazon-corretto
-    SERVICE_PATH: services/identity-service       # parameterized per service
+    SERVICE_PATH: services/user-service       # parameterized per service
   parameter-store:
     CODEARTIFACT_DOMAIN: /platform/codeartifact-domain
     CODEARTIFACT_REPO: /platform/codeartifact-repo
@@ -1163,7 +1163,7 @@ ArgoCD runs as a deployment on the EKS cluster. It watches the `food-ordering-gi
 ```
 food-ordering-gitops/
 ├── apps/
-│   ├── identity-service/
+│   ├── user-service/
 │   │   ├── base/
 │   │   │   ├── deployment.yaml
 │   │   │   ├── service.yaml
@@ -1181,8 +1181,8 @@ food-ordering-gitops/
 │   └── ... (one folder per service)
 └── argocd/
     └── applications/
-        ├── identity-service-staging.yaml
-        ├── identity-service-production.yaml
+        ├── user-service-staging.yaml
+        ├── user-service-production.yaml
         └── ... (one Application per service per env)
 ```
 
@@ -1208,8 +1208,8 @@ To avoid maintaining 10 nearly-identical pipelines, define them as Terraform mod
 ```hcl
 module "identity_pipeline" {
   source       = "../../modules/service-pipeline"
-  service_name = "identity-service"
-  service_path = "services/identity-service"
+  service_name = "user-service"
+  service_path = "services/user-service"
   java_version = "25"
   test_image   = "public.ecr.aws/aws-cli/aws-cli:latest"
   has_database = true
@@ -1228,7 +1228,7 @@ The module wires the EventBridge path-filter trigger, all CodeBuild projects, th
 - **Database migrations run as Init Containers** in the deployment, not as part of application startup.
 - **Feature flags for risky changes** via AWS AppConfig. Decouple deploy from release.
 - **Pre-production = production.** Same instance types, same DB engine version, same network topology — just smaller. Bugs that only surface in prod are usually environment drift.
-- **CodeArtifact** holds the platform BOM and shared libraries (`platform-shared-libs` modules publish here). Pipelines pull from CodeArtifact, not Maven Central, for repeatable builds.
+- **CodeArtifact** holds the platform BOM and shared libraries (`common-libs` modules publish here). Pipelines pull from CodeArtifact, not Maven Central, for repeatable builds.
 - **Pipeline events** flow through EventBridge → SNS → Slack (via AWS Chatbot) and PagerDuty. Failed prod deploys page on-call.
 - **Path-filtered triggers** keep the monorepo's pipeline overhead identical to a polyrepo's — only the affected service's pipeline runs on a typical PR.
 ---

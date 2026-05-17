@@ -2,7 +2,7 @@
 
 > **Purpose**: This document defines the cross-cutting conventions every service in the platform must follow. These are the contracts that make 10 microservices feel like one coherent platform.
 >
-> **Where this lives**: This document is the reference. The actual implementations live in `platform-shared-libs/` as code that services import via the `platform-bom`. Both must stay in sync — if you change a convention, update both this document and the corresponding shared library.
+> **Where this lives**: This document is the reference. The actual implementations live in `common-libs/` as code that services import via the `platform-bom`. Both must stay in sync — if you change a convention, update both this document and the corresponding shared library.
 >
 > **Companion documents**: `architecture.md` (the *what* and *why*), `build-plan.md` (the *how*).
 
@@ -79,7 +79,7 @@ Every service returns errors in the same shape, following RFC 7807 (`application
 **Critical rule:** Client code switches on `code`, never on `title` or `detail`. Both of those may be localized; `code` is stable across all locales.
 
 **Implementation:**
-- Lives in `platform-shared-libs/common-exceptions/src/main/java/.../errors/ErrorResponse.java`
+- Lives in `common-libs/common-exceptions/src/main/java/.../errors/ErrorResponse.java`
 - A `@RestControllerAdvice` class in `common-exceptions` converts thrown domain exceptions to this shape.
 - Content-Type header: `application/problem+json` for error responses (not `application/json`).
 - All services depend on `common-exceptions` via the BOM.
@@ -828,11 +828,11 @@ Avro schemas in Glue Schema Registry. Compatibility mode: **BACKWARD** (consumer
 ### Multi-version handling
 Producers always emit the latest schema version. Consumers handle whatever versions are in flight. Old messages in topic retention may have older schemas — consumer code must handle both until retention expires.
 
-**Implementation:** `.avsc` files live in `platform-shared-libs/common-events/src/main/avro/`. Schema Registry CLI runs in pre-commit hook to verify compatibility.
+**Implementation:** `.avsc` files live in `common-libs/common-events/src/main/avro/`. Schema Registry CLI runs in pre-commit hook to verify compatibility.
 
 ---
 
-## 18. Library Versioning (platform-shared-libs)
+## 18. Library Versioning (common-libs)
 
 Semantic versioning with strict rules:
 
@@ -1103,7 +1103,7 @@ Closes #142
 | Scope | Use |
 |---|---|
 | `{service-name}` | Specific service |
-| `shared-libs` | platform-shared-libs |
+| `shared-libs` | common-libs |
 | `infra` | platform-infra (Terraform) |
 | `gitops` | platform-gitops (K8s manifests) |
 | `bom` | platform-bom version updates |
