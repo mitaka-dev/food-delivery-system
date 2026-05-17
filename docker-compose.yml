@@ -184,5 +184,24 @@ services:
       kafka:
         condition: service_healthy
 
+# --- NEW SERVICES (uncomment to enable once implemented) ---
+#  basket-service:
+#    build:
+#      context: .
+#      dockerfile: basket-service/Dockerfile
+#      args:
+#        SERVICE_PATH: basket-service
+#    container_name: basket-service
+#    ports: ["8086:8086"]
+#    environment:
+#      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+#      REDIS_HOST: redis-cache
+#      REDIS_PORT: 6379
+#    depends_on:
+#      kafka:
+#        condition: service_healthy
+#      redis:
+#        condition: service_healthy
+
 volumes:
   postgres_data:

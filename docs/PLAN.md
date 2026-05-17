@@ -136,7 +136,7 @@ The full order flow following the same Saga pattern as user registration:
 | Phase 1 | Spring Boot 4.0 upgrade (3.5.x → 4.0.6), remove Spring Cloud | `[x]` Done |
 | Phase 2 | Remove gateway-service; direct port access locally | `[x]` Done |
 | Phase 3 | Align plan docs naming (common-libs, user-service, product-service) | `[x]` Done |
-| Phase 4 | New service skeletons (basket, kitchen, delivery, review, promotion, notification) | `[ ]` Not started |
+| Phase 4 | New service skeletons (basket, kitchen, delivery, review, promotion, notification) | `[~]` In progress — basket-service done |
 | Phase 5 | Hooks and skills via skill-creator plugin | `[ ]` Not started |
 
 ---
