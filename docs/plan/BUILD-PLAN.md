@@ -1,6 +1,7 @@
 # Food Ordering System — Build Plan for Claude Code
 
-> **Purpose**: A step-by-step build guide for Claude Code to construct a production-grade food ordering microservices platform on AWS.
+> **Purpose**: A step-by-step build guide for Claude Code (Claude Pro) to construct a production-grade food ordering microservices platform on AWS. Each build step is sized to fit in a single Claude Pro session.
+>
 > **Companion document**: `architecture.md` contains the architectural reference (sections 1–10) — the *what* and *why* behind the choices below. Read it once before starting; re-consult it when a step references a specific section. This file (`build-plan.md`) is the *how* — the action plan you work through one step at a time.
 
 ---
@@ -38,7 +39,7 @@ Java 25 is the September 2025 LTS release. Combined with Spring Boot 4 (released
 
 Every service in this plan uses `spring-boot-starter-parent:4.0.x`, `<java.version>25</java.version>`, and prefers virtual threads where I/O is the bottleneck.
 
-### Why two repositories
+### Why two repositories (not one, not thirteen)
 
 This plan uses a **monorepo for code + infrastructure** plus a **separate GitOps repo** for Kubernetes manifests. Two repos total:
 
@@ -93,14 +94,122 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 
 ---
 
+## Build Strategy
+
+> Read this section before starting Phase 0. It explains how the 85 build steps are sequenced and a few cross-cutting decisions that apply to every phase. The plan below makes more sense once you've absorbed these.
+
+### Spring profile strategy (three profiles plus one edge case)
+
+Every service runs under one of three Spring profiles. The profile determines the **shape** of dependencies — what beans load, whether IAM auth is enabled, whether TLS is required. The profile does **NOT** carry environment-specific values like hostnames, passwords, or topic names. Those come from environment variables, populated by Kubernetes from ConfigMaps and Secrets (via External Secrets Operator pulling from AWS Secrets Manager) in staging/production, and from `.env` files or `application-local.yml` placeholders during local development.
+
+The three profiles:
+
+- **`local`** — JVM runs on a developer laptop. Dependencies are Docker Compose containers: local PostgreSQL on `localhost:5432`, local Redis with no TLS, local Kafka with `PLAINTEXT` (no IAM auth), LocalStack for AWS APIs. This is the tight dev loop.
+- **`staging`** — Service runs on EKS staging. Talks to real AWS staging resources: Aurora staging cluster, ElastiCache staging cluster, MSK staging cluster with IAM auth + TLS, real DynamoDB, real SNS/SQS/S3. No LocalStack.
+- **`production`** — Service runs on EKS production. Same shape as staging but pointed at production resources via env vars.
+
+Plus one edge-case profile, used sparingly:
+
+- **`local-aws`** — JVM runs on a developer laptop, but AWS SDK calls hit **real AWS staging** instead of LocalStack. For occasional debugging — usually when something reproduces against real DynamoDB or real MSK but not against LocalStack. Activated explicitly via `-Dspring.profiles.active=local-aws`; not the default for any developer.
+
+**The rule**: profile controls shape, env vars provide values.
+
+Concrete example. `application-local.yml`:
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/identity
+    username: dev
+    password: dev
+  kafka:
+    bootstrap-servers: localhost:9092
+    properties:
+      security.protocol: PLAINTEXT
+      sasl.mechanism: ""
+aws:
+  endpoint-override: http://localhost:4566   # LocalStack
+  credentials:
+    access-key-id: dev
+    secret-access-key: dev
+```
+
+`application-staging.yml`:
+
+```yaml
+spring:
+  datasource:
+    url: ${DB_URL}                  # injected by K8s from Secret
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    properties:
+      security.protocol: SASL_SSL
+      sasl.mechanism: AWS_MSK_IAM
+# no aws.endpoint-override — SDK hits real AWS
+```
+
+Same code path runs in both. The profile shapes the auth/TLS/endpoint differences; env vars deliver the values.
+
+### Pilot-first sequencing — user-service before the rest
+
+The build does NOT take all 10 services through each phase in parallel. Instead, **user-service goes end-to-end through staging first**, including its CI/CD pipeline and its observability dashboard. This is the pilot. Once user-service is fully running in staging with all its supporting infrastructure, you pause and capture what you learned. Then services 2–10 follow the template.
+
+The pilot covers, in order:
+
+1. Phase 0 (foundation IaC, complete)
+2. Phase 1 (shared libs + BOM, complete)
+3. Phase 2 (user-service implementation through K8s deploy to staging)
+4. **From Phase 12**: Step 12.1 (Managed Prometheus + Grafana backend) and a user-service dashboard
+5. **From Phase 13**: Steps 13.1, 13.2, 13.3 (path-filter Lambda, buildspec templates, user-service pipeline)
+6. **Checkpoint**: write `docs/service-deploy-template.md` capturing the IRSA setup, Kustomize overlay structure, ServiceAccount/ExternalSecret/ServiceMonitor patterns, and the buildspec wiring that worked. This becomes the template for services 2–10.
+
+The reason for this sequencing: the first service surfaces problems that the other nine will then dodge cheaply. IRSA is fiddly the first time. Kustomize overlay structure crystallizes during user-service and becomes a copy-paste template afterward. The first ServiceMonitor and first dashboard establish conventions. Get them right once on the pilot; replicate cleanly on services 2–10.
+
+**Practical impact on Phase 12 and Phase 13**: Phase 12's Step 12.1 and Phase 13's Steps 13.1–13.3 are moved into the pilot work (executed during the user-service phase). The original Phase 12 and Phase 13 still exist — they cover *cross-cutting* observability (X-Ray, SLO alerts) and *replicating* pipelines/dashboards to services 2–10. References to those steps stay; only the execution order changes.
+
+### Expect the first service to be harder than the rest
+
+Three things will be harder on user-service than on any subsequent service. Knowing this in advance prevents the "I must be doing something wrong" feeling:
+
+- **IRSA wiring is fiddly the first time.** Five things need to align — trust policy, ServiceAccount annotation, EKS OIDC provider, pod volume mount, SDK credential chain. Get one wrong and the SDK errors are uninformative. Budget time. Subsequent services are copy-paste from the first.
+- **Kustomize overlay structure crystallizes during user-service.** Decisions about what goes in `base/` vs `overlays/`, how env config is templated, how secrets reference External Secrets — all get made during user-service and stay. Spend time getting them right; capture in `docs/service-deploy-template.md`.
+- **Observability scaffolding is one-time work.** First ServiceMonitor, first PrometheusRule, first Grafana dashboard. Templates emerge. Don't skip observability on the pilot — you'll lose context on what was happening in staging without it.
+
+### API audit gaps are handled inline per service
+
+The platform's API audit (`docs/API_AUDIT.md`) identified specific gaps in services that already exist locally. Rather than treating remediation as a separate phase, each service phase that has identified gaps gets a **dedicated audit step at the end** that addresses them. Specifically:
+
+- **Phase 2 — user-service**: audit step covers global exception handler, `@Valid` on registration, typed `RegisterResponse` with 202 status (audit §1, §5, §6 for user)
+- **Phase 6 — basket-service**: audit step covers idempotent add-item via upsert-by-productId (audit §9 for basket)
+- **Phase 8 — order-service**: audit step covers `@RestControllerAdvice` with `OrderNotFoundException`, `Page<OrderResponseDto>` with `Pageable` on list endpoint, filter by status/date (audit §5, §7, §9, §11 for order)
+- **Phase 11 — review-service**: audit step covers unique `(orderId, userId)` constraint, pagination on `GET /reviews/orders/{orderId}` (audit §7, §9 for review)
+
+Two pieces of cross-cutting audit infrastructure ride in Phase 1's shared libraries:
+
+- **`ApiError` record** in `common-exceptions` — replaces the private record currently in `product-service`'s exception handler; consumed by user-service and order-service's new handlers
+- **`IdempotencyKeyFilter`** in `common-resilience` — the Spring AOP aspect already planned in Step 1.3 doubles as the filter the audit recommends for order-service (and optionally basket and review)
+
+The audit's priority order — testability → order idempotency → user validation → exception handlers → order pagination — is reflected in the sequencing. Testability is highest priority but requires services to exist, so it's addressed in Phase 14 (cross-cutting test scaffolding) plus the per-service slice tests added in each per-service audit step.
+
+### Staging-only on the first pass
+
+Per-service phases (2 through 11) deploy ONLY to staging. Production deploys batch in Phase 15 (Production Hardening), once every service has been observed running stably in staging, dashboards are green, SLOs are tracked, and security/DR work is complete. This is already implicit in the plan — most service phases say "deploy to staging" — but worth being explicit: do not deploy any service to production until Phase 15.
+
+The only exception is the pilot CI/CD work (Step 13.3 in the pilot context): it sets up user-service's staging pipeline. Production pipeline + canary rollouts come later via Step 13.4.
+
+---
+
 ## Table of Contents
 
+- [Build Strategy](#build-strategy)
 - [Phase 0: Foundation & Infrastructure](#phase-0-foundation--infrastructure)
 - [Phase 1: Shared Libraries & Platform BOM](#phase-1-shared-libraries--platform-bom)
-- [Phase 2: Identity & Profile Service](#phase-2-identity--profile-service)
+- [Phase 2: User Service](#phase-2-user-service)
 - [Phase 3: Notification Service (Lambda)](#phase-3-notification-service-lambda)
 - [Phase 4: Promotion & Loyalty Service](#phase-4-promotion--loyalty-service)
-- [Phase 5: Restaurant Menu Service](#phase-5-restaurant-product-service)
+- [Phase 5: Product (Restaurant Menu) Service](#phase-5-product-restaurant-menu-service)
 - [Phase 6: Basket Service](#phase-6-basket-service)
 - [Phase 7: Payment Service](#phase-7-payment-service)
 - [Phase 8: Order Orchestrator Service](#phase-8-order-orchestrator-service)
@@ -116,7 +225,7 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 
 ---
 
-# BUILD STEPS
+# PART B — BUILD STEPS
 
 > Each step below is sized for one Claude Pro session. Mark a step done by changing `- [ ]` to `- [x]`. Steps within a phase that have no dependency on each other can be parallelized across multiple sessions.
 
@@ -125,7 +234,7 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 > Goal: provision all shared AWS infrastructure with Terraform before writing a single line of application code. By the end of this phase, you have a working EKS cluster with databases, queues, and ArgoCD ready to receive deployments.
 
 ### Step 0.1: Monorepo bootstrap & developer prerequisites
-- [ ] **Objective**: Initialize the `food-ordering-platform` monorepo skeleton, the `food-ordering-gitops` companion repo, and document local developer setup.
+- [ ] **Objective**: Initialize the `food-ordering-platform` monorepo skeleton, the `food-ordering-gitops` companion repo, document local developer setup, and lock in the three-profile convention (`local`, `staging`, `production`).
 - **Files to create**:
   - `food-ordering-platform/README.md` (top-level overview, links to the plan)
   - `food-ordering-platform/.gitignore`
@@ -134,19 +243,23 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
   - `food-ordering-platform/scripts/bootstrap-dev.sh` (installs awscli, kubectl, helm, terraform, sam, mvn)
   - `food-ordering-platform/docs/developer-setup.md`
   - `food-ordering-platform/docs/architecture.md` (copy of the architecture reference, maintained alongside the code)
-  - `food-ordering-platform/.envrc.template` (direnv: AWS_PROFILE, AWS_REGION, CODEARTIFACT_AUTH_TOKEN refresh)
+  - `food-ordering-platform/docs/spring-profiles.md` (the three-profile convention; describes `local` / `staging` / `production` / `local-aws`)
+  - `food-ordering-platform/.envrc.template` (direnv: AWS_PROFILE, AWS_REGION, CODEARTIFACT_AUTH_TOKEN refresh, SPRING_PROFILES_ACTIVE=local default)
+  - `food-ordering-platform/docker-compose.yml` (root-level: Postgres, Redis, Kafka in KRaft mode, LocalStack; used by every service when running under the `local` profile)
+  - `food-ordering-platform/dev/seed/` (seed data + scripts for local dev)
   - Empty top-level dirs: `services/`, `common-libs/`, `platform-bom/`, `platform-infra/`, `e2e-tests/`
   - `food-ordering-gitops/README.md` (companion repo, watched by ArgoCD)
   - `food-ordering-gitops/.gitignore`
   - Empty top-level dirs in gitops repo: `apps/`, `argocd/`
 - **Key details**:
   - Two CodeCommit repos: `food-ordering-platform` (code+infra+tests), `food-ordering-gitops` (K8s manifests). Both initialized with a commit per the layout in `architecture.md` Section 10.1.
+  - **Spring profile convention** (locked in here so subsequent service phases follow it): three profiles — `local` (Docker Compose deps + LocalStack), `staging` (real AWS staging), `production` (real AWS production). Plus `local-aws` as a sparingly-used edge case (JVM local, AWS calls hit real staging). See "Build Strategy" section above. `docs/spring-profiles.md` documents the rule "profile controls shape, env vars provide values" with an example.
   - Document the AWS account layout (single account v1, multi-account in Phase 5).
   - Naming convention: `{org}-{env}-{service}-{resource}` for every AWS resource.
   - Tag every AWS resource with `Project=food-ordering`, `Environment={dev|staging|prod}`, `Service={service-name}`, `Owner={team}`, `CostCenter={code}`.
   - The `bootstrap-dev.sh` should idempotently install all dev tools and run `aws codeartifact login --tool maven --domain {org}-platform --repository internal` once Phase 0.8 has provisioned CodeArtifact.
   - Branch protection on `main` for both repos: 1 approval required, status checks must pass, no force-pushes.
-- **Acceptance criteria**: Both CodeCommit repos exist with the documented top-level structure. New developer can clone the platform repo, run `scripts/bootstrap-dev.sh`, and end up with all tools installed at correct versions.
+- **Acceptance criteria**: Both CodeCommit repos exist with the documented top-level structure. New developer can clone the platform repo, run `scripts/bootstrap-dev.sh`, and end up with all tools installed at correct versions. `docker-compose up` brings up local dependencies. `docs/spring-profiles.md` clearly describes the three profiles and the shape-vs-values rule.
 - **Dependencies**: none
 
 ### Step 0.2: Terraform — VPC and networking
@@ -380,8 +493,8 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 - **Acceptance criteria**: `mvn -B verify` from the monorepo root succeeds (modules empty but reactor resolves). `mvn -B deploy -pl platform-bom -DskipTests` publishes `platform-bom:1.0.0-SNAPSHOT` to CodeArtifact. A throwaway service POM in `services/test-service/` that imports the BOM resolves all listed dependencies without specifying versions.
 - **Dependencies**: 0.9
 
-### Step 1.2: common-events and common-dto modules
-- [ ] **Objective**: Define shared event payload types and common DTOs with schema versioning. These are the wire contracts every service shares.
+### Step 1.2: common-events, common-dto, and common-exceptions modules
+- [ ] **Objective**: Define shared event payload types, common DTOs with schema versioning, and the shared error envelope (`ApiError`) used by every service's exception handler. These are the wire contracts every service shares.
 - **Files to create**:
   - `common-libs/common-events/pom.xml`
   - `common-libs/common-events/src/main/java/.../events/UserCreatedEvent.java`
@@ -397,6 +510,11 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
   - `common-libs/common-dto/src/main/java/.../dto/Money.java`
   - `common-libs/common-dto/src/main/java/.../dto/Address.java`
   - `common-libs/common-dto/src/main/java/.../dto/PaginationCursor.java`
+  - `common-libs/common-exceptions/pom.xml`
+  - `common-libs/common-exceptions/src/main/java/.../api/ApiError.java` (shared error envelope record)
+  - `common-libs/common-exceptions/src/main/java/.../api/FieldError.java` (per-field validation detail used by `ApiError`)
+  - `common-libs/common-exceptions/src/main/java/.../exceptions/PlatformException.java` (abstract base for typed exceptions)
+  - `common-libs/common-exceptions/src/test/java/.../api/ApiErrorSerializationTest.java`
 - **Key details**:
   - All event types are **immutable Java records** with JSpecify `@NonNull`/`@Nullable` annotations (Spring Boot 4 + Java 25 idiom).
   - Use Jackson `@JsonProperty` for stable wire format.
@@ -404,7 +522,8 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
   - **Avro schema files** parallel the Java records — a generated `kafka-avro-serializer` will use them with Glue Schema Registry. Schemas are the source of truth for cross-language compatibility (in case a Python analytics consumer is added later).
   - `Money` uses `BigDecimal` with explicit currency code (ISO 4217) — never `double`.
   - DTOs are serialization contracts: any change is breaking, treat schema evolution carefully (Avro's compatibility rules: BACKWARD by default).
-- **Acceptance criteria**: Records serialize/deserialize round-trip in unit tests. Avro schemas validate against the records via Avro→POJO mapping test.
+  - **Audit-driven (cross-cutting recommendation #1)**: `ApiError` record shape: `{ status: int, error: String, code: String, message: String, timestamp: Instant, path: String, traceId: String, fieldErrors: List<FieldError>? }`. `FieldError` shape: `{ field: String, rejectedValue: Object, message: String }`. Replaces the private record currently in `product-service`'s exception handler. Required by user-service Step 2.6 and order-service Step 8.12.
+- **Acceptance criteria**: Records serialize/deserialize round-trip in unit tests. Avro schemas validate against the records via Avro→POJO mapping test. `ApiError` serializes to JSON with stable field names and excludes null `fieldErrors` by default.
 - **Dependencies**: 1.1
 
 ### Step 1.3: common-resilience module — Resilience4j + Idempotency
@@ -461,15 +580,22 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 
 ---
 
-## Phase 2: Identity & Profile Service
+## Phase 2: User Service
 
 > Goal: working registration + login + JWT issuance, with the outbox emitting `USER_CREATED` events. By end of phase, you can register a user via API Gateway and observe the event in CloudWatch logs of a placeholder consumer.
+>
+> **PILOT NOTE**: user-service is the **pilot service**. Treat it as the template for services 2–10. In addition to Steps 2.1 through 2.6 below, the user-service pilot also includes — executed in the same overall arc, before any other service phase starts:
+> - **Step 12.1** (Managed Prometheus + Grafana backend, plus user-service dashboard) — pulled forward from Phase 12
+> - **Steps 13.1, 13.2, 13.3** (CodeCommit policies + path-filter Lambda + buildspec templates + user-service staging pipeline) — pulled forward from Phase 13
+> - **Step 2.7** (consolidate the deploy template) — captures what was learned for services 2–10 to reuse
+>
+> The remainder of Phase 12 and Phase 13 — X-Ray, SLO alerts, canary rollouts, replicating pipelines to services 2–10 — happens after all services exist, in the original phase order.
 
 ### Step 2.1: user-service skeleton + DB schema
 - [ ] **Objective**: Create the Spring Boot project, configure DB connection, run initial migrations.
 - **Files to create**:
   - `services/user-service/pom.xml`
-  - `services/user-service/src/main/java/.../IdentityApplication.java`
+  - `services/user-service/src/main/java/.../UserApplication.java`
   - `services/user-service/src/main/resources/application.yml`
   - `services/user-service/src/main/resources/application-staging.yml`
   - `services/user-service/src/main/resources/db/migration/V1__users.sql`
@@ -505,7 +631,8 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
   - Generate UUID v7 for user IDs (time-ordered)
   - Default role on registration: CUSTOMER
   - Tests use Testcontainers for PostgreSQL + LocalStack for SNS
-- **Acceptance criteria**: After registration, `outbox` table contains 1 row with `event_type=USER_CREATED`. After ~1s the row's `processed_at` is set and the event lands in the configured SNS topic (verified by Testcontainers LocalStack).
+  - **Audit-driven (audit §1, §6 for user-service)**: `RegisterRequest` is a Java record with `@NotBlank @Size(min=3, max=50)` on `username`, `@NotBlank @Size(min=8)` on `password`, `@Email @NotBlank` on `email`, `@NotNull` on `role`. Controller parameter is annotated `@Valid`. Endpoint returns a typed `RegisterResponse` record (NOT `ResponseEntity<String>`) with at minimum `{ userId, username, status, message }`. Returns **HTTP 202 Accepted** — registration is async (user transitions from PENDING via the USER_CREATED event flow).
+- **Acceptance criteria**: After registration, `outbox` table contains 1 row with `event_type=USER_CREATED`. After ~1s the row's `processed_at` is set and the event lands in the configured SNS topic (verified by Testcontainers LocalStack). Validation rejects empty `username`, blank `password`, malformed `email` with HTTP 400 + field-level error details. Success response is HTTP 202 with a typed `RegisterResponse` body.
 - **Dependencies**: 2.1
 
 ### Step 2.3: Login + JWT issuance + refresh token rotation
@@ -570,11 +697,48 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 - **Acceptance criteria**: Push to staging branch of food-ordering-gitops causes ArgoCD to deploy user-service. `kubectl get pods -n identity` shows running pods. Public API Gateway URL `POST /v1/auth/register` succeeds end-to-end.
 - **Dependencies**: 0.11, 2.4
 
+### Step 2.6: Address user-service audit gaps
+- [ ] **Objective**: Close the audit gaps identified in `docs/API_AUDIT.md` for user-service: global exception handler, consistent error envelope, return-type fix. (The `@Valid` work and the typed-response fix from §1/§6 were already addressed in Step 2.2.)
+- **Files to create**:
+  - `services/user-service/src/main/java/.../exception/GlobalExceptionHandler.java`
+  - `services/user-service/src/main/java/.../exception/UserServiceExceptions.java` (typed exceptions: `UserNotFoundException`, `EmailAlreadyTakenException`, `InvalidCredentialsException`, etc.)
+  - `services/user-service/src/test/java/.../exception/GlobalExceptionHandlerIT.java`
+- **Files to modify**:
+  - All controllers in `services/user-service/` — ensure they throw typed exceptions, not generic `RuntimeException`.
+- **Key details**:
+  - **Audit §5 for user-service**: `@RestControllerAdvice` with explicit handlers:
+    - `BadCredentialsException` → HTTP 401, `ApiError` body with code `AUTH_INVALID_CREDENTIALS`
+    - `EmailAlreadyTakenException` → HTTP 409, code `AUTH_EMAIL_TAKEN`
+    - `UserNotFoundException` → HTTP 404, code `USER_NOT_FOUND`
+    - `MethodArgumentNotValidException` → HTTP 400, `ApiError` with `fieldErrors[]` populated from binding result
+    - `Exception` (catch-all) → HTTP 500, code `INTERNAL_ERROR`, message redacted (no stack trace leakage)
+  - Uses the shared `ApiError` record from `common-exceptions` (created in Step 1.2). Do NOT redefine locally.
+  - Logging: every handler logs at WARN for 4xx, ERROR for 5xx, with request ID and user ID (if available) in MDC.
+  - Test class verifies each handler produces the expected status + ApiError body shape via `@WebMvcTest`.
+- **Acceptance criteria**: All known error paths return uniformly-shaped `ApiError` JSON. Integration test asserts the exact ApiError shape and HTTP status for each exception type. Unhandled exceptions no longer leak Spring's default error format.
+- **Dependencies**: 2.5, 1.2 (the shared `ApiError` record must exist)
+
+### Step 2.7: Consolidate deploy template (pilot checkpoint)
+- [ ] **Objective**: Now that user-service is fully running in staging with its CI/CD pipeline and dashboard, capture the patterns that worked. This document becomes the template for services 2–10.
+- **Files to create**:
+  - `food-ordering-platform/docs/service-deploy-template.md`
+- **Key details**:
+  - The template covers, for any future service:
+    - **IRSA setup**: ServiceAccount annotation pattern, IAM role naming convention (`{org}-{env}-{service}-irsa`), trust policy template, common pitfalls
+    - **Kustomize layout**: which manifests go in `base/`, which env-specific bits live in overlays, how `image-tag.yaml` is updated by CI
+    - **External Secrets**: per-service `ExternalSecret` pattern, Secrets Manager path conventions
+    - **ServiceMonitor + dashboard**: per-service monitoring scaffold, dashboard JSON file location, standard RED panels
+    - **Pipeline wiring**: how to add a new service to the path-filter Lambda's routing config, what Terraform module instantiation looks like (one short `.tf` file per service)
+    - **Verification checklist**: what "service X is fully deployed to staging" means concretely
+  - Template includes a short FAQ section listing the surprises encountered on user-service so the next service author doesn't repeat them.
+- **Acceptance criteria**: A developer who has never deployed a service to this platform can follow `docs/service-deploy-template.md` start-to-finish and end up with a new service running in staging without needing to read the build plan's Phase 2.
+- **Dependencies**: 2.6, and the pulled-forward Steps 12.1 + 13.1 + 13.2 + 13.3 (all of which complete before this consolidation)
+
 ---
 
 ## Phase 3: Notification Service (Lambda)
 
-> Goal: working `USER_CREATED` → welcome email pipeline. Once this works, Identity has a real consumer for its outbox events.
+> Goal: working `USER_CREATED` → welcome email pipeline. Once this works, User Service has a real consumer for its outbox events.
 
 ### Step 3.1: notification-service Lambda skeleton
 - [ ] **Objective**: Create AWS SAM project for the Lambda + base SES configuration.
@@ -726,7 +890,7 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 
 ---
 
-## Phase 5: Restaurant Menu Service
+## Phase 5: Product (Restaurant Menu) Service
 
 > Goal: a working menu service with cache-aside, image upload via pre-signed URLs, gRPC verification endpoint, and the public search API.
 
@@ -734,7 +898,7 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 - [ ] **Objective**: Spring Boot service with AWS SDK v2 DynamoDB client and basic CRUD.
 - **Files to create**:
   - `services/product-service/pom.xml`
-  - `services/product-service/src/main/java/.../MenuApplication.java`
+  - `services/product-service/src/main/java/.../ProductApplication.java`
   - `services/product-service/src/main/java/.../config/DynamoDbConfig.java`
   - `services/product-service/src/main/java/.../domain/Menu.java`
   - `services/product-service/src/main/java/.../domain/MenuItem.java`
@@ -893,6 +1057,20 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
   - On checkout failure (price changed, item unavailable): 409 with details so UI can refresh
 - **Acceptance criteria**: End-to-end: add items, checkout, get a `PreOrder` with locked basket. Try modifying during lock → 409.
 - **Dependencies**: 6.3, 0.11
+
+### Step 6.5: Address basket-service audit gaps
+- [ ] **Objective**: Close the audit gap identified in `docs/API_AUDIT.md` for basket-service: idempotent add-item via upsert-by-productId.
+- **Files to modify**:
+  - `services/basket-service/src/main/java/.../service/BasketService.java`
+  - `services/basket-service/src/main/java/.../domain/Basket.java`
+  - `services/basket-service/src/test/java/.../api/BasketControllerIT.java` (add idempotency-by-product tests)
+- **Key details**:
+  - **Audit §9 for basket-service**: `POST /v1/basket/items` must upsert by `productId`. If the same product is added twice (with or without `Idempotency-Key` header), the basket should NOT contain two separate entries — it should contain one entry with `quantity = quantity_existing + quantity_new`.
+  - Atomicity: use Redis Lua script (single round-trip, atomic) for the read-modify-write. The script: HGET the basket; if product exists, ADD to its quantity; otherwise HSET a new entry. Refresh basket TTL on success.
+  - The existing `Idempotency-Key` mechanism (request-level) is still useful for "exactly-once" semantics on retry of the same HTTP call. The upsert-by-productId is for "same product added in two separate calls" — different concern, different solution.
+  - Quantity cap: still enforce the 50-item limit, but interpret it as 50 distinct line-items, not 50 units. Increasing quantity on an existing item never hits the limit.
+- **Acceptance criteria**: Integration test: POST add-item with same `productId` twice (no shared idempotency key) → basket contains ONE entry with quantity 2. POST with same `Idempotency-Key` twice → returns cached response, basket unchanged from second call.
+- **Dependencies**: 6.4
 
 ---
 
@@ -1125,17 +1303,18 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 - **Dependencies**: 8.7
 
 ### Step 8.9: Get order + list orders endpoints
-- [ ] **Objective**: Read APIs `GET /v1/orders/{id}` and `GET /v1/orders?cursor=...&limit=...`.
+- [ ] **Objective**: Read APIs `GET /v1/orders/{id}` and `GET /v1/orders` with pagination, filtering, and sorting.
 - **Files to create**:
   - `services/order-service/src/main/java/.../api/OrderQueryController.java`
   - `services/order-service/src/main/java/.../service/OrderQueryService.java`
   - `services/order-service/src/main/java/.../api/dto/OrderListResponse.java`
 - **Key details**:
-  - Cursor-based pagination using `(created_at, id)` as cursor
+  - **Audit §7 + §11 for order-service**: `GET /v1/orders` returns `Page<OrderResponseDto>` (Spring Data) — never unpaginated `List`. Controller accepts `Pageable` parameter with `@PageableDefault(size = 20)`. Optional filter params: `?status=PAID`, `?from=2026-01-01`, `?to=2026-01-31`, and `?sort=createdAt,desc` (Spring Data convention). All filters validated; invalid `status` values rejected with 400.
+  - Cursor-based pagination is also supported on `GET /v1/orders?cursor=...&limit=...` for high-volume customer-history use cases — the two pagination styles coexist (page+filter for admin / restaurant-owner views, cursor for customer "infinite scroll").
   - Read replica for queries (Aurora endpoint configured separately from writes)
   - Customer can only see their own orders; restaurant owner sees orders for their restaurant; admin sees all
   - Includes saga state and timeline (state transition history) — store transitions in dedicated `order_state_history` table updated by state machine listener
-- **Acceptance criteria**: Customer with 50 orders can paginate through them in batches of 20. Cursor stable under concurrent inserts.
+- **Acceptance criteria**: Customer with 50 orders can paginate via both page-based and cursor-based mechanisms. Filtering by `status=DELIVERED` returns only delivered orders. Date range filter returns orders within the specified `from`–`to` window. Invalid `status` value (e.g. `?status=BANANA`) returns HTTP 400 with `ApiError`.
 - **Dependencies**: 8.8
 
 ### Step 8.10: Outbox publisher sidecar + observability dashboards
@@ -1168,6 +1347,28 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
   - Add liveness probe (`/actuator/health/liveness`) and readiness probe (`/actuator/health/readiness`)
 - **Acceptance criteria**: ArgoCD shows Healthy. End-to-end smoke test against staging: register user → add to basket → checkout → order created → payment captured → kitchen ticket appears in DDB.
 - **Dependencies**: 8.10, 0.11
+
+### Step 8.12: Address order-service audit gaps
+- [ ] **Objective**: Close the remaining audit gaps identified in `docs/API_AUDIT.md` for order-service: global exception handler with `OrderNotFoundException`. (Idempotency-Key was already addressed in Step 8.2; pagination + filtering were addressed in Step 8.9.)
+- **Files to create**:
+  - `services/order-service/src/main/java/.../exception/GlobalExceptionHandler.java`
+  - `services/order-service/src/main/java/.../exception/OrderServiceExceptions.java` (typed exceptions: `OrderNotFoundException`, `OrderStateConflictException`, `IdempotencyKeyMismatchException`, etc.)
+  - `services/order-service/src/test/java/.../exception/GlobalExceptionHandlerIT.java`
+- **Files to modify**:
+  - All controllers and services in `services/order-service/` — replace generic `RuntimeException` throws with typed exceptions from `OrderServiceExceptions`.
+- **Key details**:
+  - **Audit §5 for order-service**: `@RestControllerAdvice` with explicit handlers:
+    - `OrderNotFoundException` → HTTP 404, code `ORDER_NOT_FOUND`
+    - `OrderStateConflictException` → HTTP 409, code `ORDER_STATE_CONFLICT` (e.g. "can't cancel order in OUT_FOR_DELIVERY")
+    - `IdempotencyKeyMismatchException` → HTTP 409, code `IDEMPOTENCY_KEY_MISMATCH` (same key, different body)
+    - `MethodArgumentNotValidException` → HTTP 400, `ApiError` with `fieldErrors[]`
+    - `MissingRequestHeaderException` (for missing `Idempotency-Key`) → HTTP 400, code `IDEMPOTENCY_KEY_REQUIRED`
+    - `Exception` (catch-all) → HTTP 500, code `INTERNAL_ERROR`, message redacted
+  - Uses the shared `ApiError` record from `common-exceptions` (Step 1.2). Do NOT redefine locally.
+  - Saga-related exceptions (`SagaCompensationFailedException`, etc.) are server-side and never reach the controller advice — they're handled in the saga layer with retry + alert.
+  - Test class verifies each handler produces the expected status + ApiError body via `@WebMvcTest`.
+- **Acceptance criteria**: All known error paths return uniformly-shaped `ApiError` JSON. Integration tests assert the exact ApiError shape and HTTP status for each exception. Unhandled exceptions no longer leak Spring's default error format. `GET /v1/orders/nonexistent` returns HTTP 404 with `ApiError { code: "ORDER_NOT_FOUND" }`.
+- **Dependencies**: 8.11, 1.2 (shared `ApiError`)
 
 ---
 
@@ -1404,11 +1605,26 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 - **Acceptance criteria**: ArgoCD shows review-service Healthy. Public read endpoints respond. Aggregates update on review submission.
 - **Dependencies**: 11.3, 0.11
 
+### Step 11.5: Address review-service audit gaps
+- [ ] **Objective**: Close the audit gaps identified in `docs/API_AUDIT.md` for review-service: pagination on per-order review listing, uniqueness constraint preventing duplicate reviews from the same user for the same order.
+- **Files to modify**:
+  - `services/review-service/src/main/java/.../api/ReviewController.java`
+  - `services/review-service/src/main/java/.../service/ReviewService.java`
+  - `services/review-service/src/main/java/.../domain/ReviewRepository.java`
+- **Key details**:
+  - **Audit §7 for review-service**: `GET /v1/reviews/orders/{orderId}` and `GET /v1/restaurants/{id}/reviews` accept `Pageable` parameter and return `Page<ReviewResponseDto>` — never unbounded `List`. Defaults `@PageableDefault(size = 20, sort = "submittedAt", direction = DESC)`.
+  - **Audit §9 for review-service**: prevent duplicate reviews from the same user for the same order. Since DynamoDB doesn't enforce composite uniqueness across PK/SK alone, the existing PK `REVIEW#{type}#{entityId}` + SK `{orderId}#{userId}` already prevents duplicates *for the same entity*. But a user could currently submit two reviews of *different* entities for the same order (e.g., one for the restaurant and one for the driver) — which is actually allowed by design. The gap is duplicate review of the *same entity* by the same user for the same order, which is naturally prevented by the (PK, SK) combination + `PutItem` with `attribute_not_exists(PK)`.
+  - Surface the duplicate-detection failure as HTTP 409 + `ApiError { code: "REVIEW_ALREADY_SUBMITTED" }` via the global exception handler (the existing one — review-service already has `@RestControllerAdvice`, just add the new mapping).
+- **Acceptance criteria**: Listing reviews returns a page object (size, total, content[]). Posting a second review with the same `(type, entityId, orderId, userId)` tuple returns 409 with a typed `ApiError` body.
+- **Dependencies**: 11.4
+
 ---
 
 ## Phase 12: Observability
 
 > Goal: every service is fully observable with metrics, traces, logs, and SLO-based alerts. By end of phase, on-call engineer can diagnose any outage in < 5 minutes.
+>
+> **Note**: Step 12.1 below was pulled forward into the user-service pilot (executed during Phase 2). The user-service dashboard and Managed Prometheus / Managed Grafana setup already exist by the time Phase 12 starts. Phase 12 covers: (a) per-service dashboards for the remaining 9 services, (b) cross-cutting X-Ray tracing, (c) SLO-based alerts. Step 12.1 here remains as a reference for what the pilot work delivered.
 
 ### Step 12.1: Amazon Managed Prometheus + Managed Grafana setup
 - [ ] **Objective**: Provision the observability backend and connect EKS to it.
@@ -1485,6 +1701,8 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 ## Phase 13: CI/CD on AWS
 
 > Goal: every service has a fully AWS-native pipeline triggered from the **single** `food-ordering-platform` monorepo via path-filtered EventBridge rules. **No GitHub Actions anywhere.** All pipelines write image-tag bumps to the companion `food-ordering-gitops` repo, which ArgoCD reconciles to EKS.
+>
+> **Note**: Steps 13.1, 13.2, and 13.3 below were pulled forward into the user-service pilot (executed during Phase 2). The path-filter Lambda, buildspec templates, and user-service staging pipeline already exist by the time Phase 13 starts. Phase 13 covers: (a) production deployment with manual approval + canary (Step 13.4), (b) replicating pipelines to the remaining 9 services (Step 13.5), (c) pipeline + ArgoCD notifications (Step 13.6). Steps 13.1–13.3 here remain as a reference for what the pilot work delivered.
 
 ### Step 13.1: CodeCommit access policies + path-filter Lambda + IAM cross-cutting
 - [ ] **Objective**: Configure access controls on the two CodeCommit repos created in Step 0.1, build the path-filter Lambda that decides which pipelines to start on a given commit, and finalize CI IAM roles. (CodeArtifact and most IAM was already provisioned in Step 0.9 — this step is the CI-pipeline-specific glue.)
@@ -1607,6 +1825,24 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 ## Phase 14: End-to-End Testing
 
 > Goal: automated test suites validate the three core flows (happy path, cancel, error) on every staging deploy. Load testing uncovers capacity limits before production traffic does.
+
+### Step 14.0: Per-service test scaffolding (close audit §12)
+- [ ] **Objective**: Close the cross-cutting testability gap identified in `docs/API_AUDIT.md` §12. Every HTTP-exposing service gets controller-slice tests, repository-slice tests, and at least one happy-path service-layer test. The Saga end-to-end integration test comes in Step 14.1.
+- **Files to create** (per service that has HTTP endpoints — user, order, product, basket, kitchen, delivery, review, promotion):
+  - `services/{name}/src/test/java/.../api/{Resource}ControllerTest.java` — `@WebMvcTest` per controller; covers happy path + validation errors + 4xx responses; mocks the service layer
+  - `services/{name}/src/test/java/.../domain/{Resource}RepositoryTest.java` — `@DataJpaTest` for JPA services; DynamoDB Enhanced Client tests with LocalStack for product and kitchen and review
+  - `services/{name}/src/test/java/.../service/{Resource}ServiceTest.java` — happy path of the main service class with Mockito for dependencies
+  - `services/{name}/src/test/java/.../config/IntegrationTestBase.java` — shared Testcontainers setup (Postgres, Redis, Kafka per service needs) reused across IT tests
+- **Key details**:
+  - **Coverage target**: ≥ 80% line coverage gate per service (already configured in `buildspec-build-test-scan.yml`); per-class minimum 70% on `service/` and `api/` packages.
+  - **JUnit 5 + AssertJ** as the standard. No legacy JUnit 4. AssertJ for assertions everywhere, NOT JUnit `assertEquals`.
+  - **Mockito 5+**; no PowerMock.
+  - **Testcontainers** for any test crossing a DB/queue/cache boundary. Reuse strategy: `IntegrationTestBase` declares static containers shared across tests in the same module.
+  - **Contract tests** (DTO schema): one test per service that asserts the wire shape of `ApiError`, the main request/response DTOs, and any saga events. Catches accidental breaking changes before they ship.
+  - The audit's call for "Saga integration test" lives in Step 14.1 — it's an end-to-end test across services, not a per-service scaffold concern.
+  - **Sequencing**: this step is broken down per-service in practice. The single build-plan checkbox represents "all services have the slice + service-layer + contract tests passing in CI." Mark done only when the coverage gate is green for every service.
+- **Acceptance criteria**: Every service's pipeline shows ≥ 80% line coverage in JaCoCo report. Every service has at least one `@WebMvcTest`, one repository slice or Testcontainers-backed test, one service-layer happy-path test, and one ApiError-contract test. Placeholder `contextLoads()` tests removed from every service.
+- **Dependencies**: 11.5 (every per-service phase complete, audit gaps closed)
 
 ### Step 14.1: E2E happy path test (full order lifecycle)
 - [ ] **Objective**: Postman/Newman or k6 script that drives a full order from registration to delivery against staging.
@@ -1765,23 +2001,25 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 |---|---|---|---|
 | 0 — Foundation | 11 | 11 | Mostly sequential (IaC dependencies) |
 | 1 — Shared Libs + BOM | 4 | 4 | Yes after 1.1 |
-| 2 — Identity | 5 | 5 | Sequential |
+| 2 — User Service (pilot) | 7 | 7+ | Sequential; pilot also includes pulled-forward 12.1 + 13.1–13.3 |
 | 3 — Notification | 4 | 4 | Sequential |
 | 4 — Promotion | 4 | 4 | Sequential, can run alongside 5/6/7 |
-| 5 — Menu | 5 | 5 | Sequential, can run alongside 4/6/7 |
-| 6 — Basket | 4 | 4 | Sequential, depends on 5.4 |
+| 5 — Product (Menu) | 5 | 5 | Sequential, can run alongside 4/6/7 |
+| 6 — Basket | 5 | 5 | Sequential, depends on 5.4 |
 | 7 — Payment | 5 | 5 | Sequential, can run alongside 4/5/6 |
-| 8 — Order Orchestrator | 11 | 11 | Sequential — the critical path |
+| 8 — Order Orchestrator | 12 | 12 | Sequential — the critical path |
 | 9 — Kitchen | 5 | 5 | Sequential, depends on 8.4 |
 | 10 — Delivery | 5 | 5 | Sequential, depends on 9.2 |
-| 11 — Review | 4 | 4 | Sequential, depends on 10.4 |
-| 12 — Observability | 4 | 4 | Mostly parallel after 12.1 |
-| 13 — CI/CD | 6 | 6 | Sequential |
-| 14 — E2E Testing | 4 | 4 | Sequential |
+| 11 — Review | 5 | 5 | Sequential, depends on 10.4 |
+| 12 — Observability | 4 | 4 | 12.1 already done in pilot; 12.2 is per-service-9, parallelizable |
+| 13 — CI/CD | 6 | 6 | 13.1–13.3 already done in pilot; 13.5 fans out across services |
+| 14 — E2E Testing | 5 | 5 | 14.0 (per-service test scaffolding) parallelizable across services |
 | 15 — Hardening | 4 | 4 | Mostly sequential |
-| **Total** | **85** | **85 sessions** | ~14 weeks of focused work for one engineer |
+| **Total** | **91** | **~91 sessions** | ~15 weeks of focused work for one engineer |
 
-With 2–3 engineers running parallel sessions where dependencies allow, the practical timeline is ~12 weeks.
+With 2–3 engineers running parallel sessions where dependencies allow, the practical timeline is ~12–13 weeks.
+
+**Pilot weight**: the user-service pilot (Phase 2 expanded, plus pulled-forward 12.1 + 13.1–13.3) is roughly 11–12 sessions on its own. Budget extra time here because the first service surfaces IRSA, Kustomize, observability, and CI/CD friction that subsequent services dodge. The investment pays back across the remaining 9 services.
 
 ## How to Run a Session
 
@@ -1809,4 +2047,4 @@ If a session runs out of tokens mid-step:
 
 ---
 
-Reference architecture in companion file `architecture.md`.*
+*End of build-plan.md. Total: 85 build steps across 16 phases (0–15). Reference architecture in companion file `architecture.md`.*
