@@ -1,4 +1,4 @@
-# Food Ordering System — Service Reference
+# Food Delivery System — Service Reference
 
 > Technical reference for all microservices: endpoints, data models, Kafka flows, and Saga patterns.
 

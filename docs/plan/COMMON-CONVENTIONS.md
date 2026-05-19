@@ -1,4 +1,4 @@
-# Common Conventions — Food Ordering Platform
+# Common Conventions — Food Delivery Platform
 
 > **Purpose**: This document defines the cross-cutting conventions every service in the platform must follow. These are the contracts that make 10 microservices feel like one coherent platform.
 >

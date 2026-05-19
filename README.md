@@ -1,4 +1,4 @@
-# Food Ordering System
+# Food Delivery System
 
 A microservices-based food ordering platform built with Spring Boot 3.5, demonstrating the **Saga pattern** for distributed transactions across independently deployable services.
 
@@ -43,7 +43,7 @@ Client → order-service (8083)  — orders (Bearer token)
 
 ```bash
 git clone <repo-url>
-cd food-ordering-system
+cd food-delivery-system
 ./start.sh
 ```
 

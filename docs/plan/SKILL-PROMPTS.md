@@ -1,6 +1,6 @@
-# Skill-Creator Prompts — Food Ordering Platform
+# Skill-Creator Prompts — Food Delivery Platform
 
-> **Purpose**: Twenty copy-paste-ready prompts for Claude Code's skill-creator. Each prompt produces one SKILL.md for the food-ordering-platform monorepo.
+> **Purpose**: Twenty copy-paste-ready prompts for Claude Code's skill-creator. Each prompt produces one SKILL.md for the food-delivery-platform monorepo.
 >
 > **How to use**: Open Claude Code, invoke `skill-creator` (or run `/create-skill` if your installation has it as a slash command), paste the prompt for the skill you want to build, review the produced SKILL.md before committing.
 >
@@ -48,7 +48,7 @@
 Create a Claude Code skill named `spring-boot-service-conventions`.
 
 PURPOSE
-This skill encodes how every Spring Boot service in the food-ordering-platform monorepo is structured. It is the most-loaded skill across the project — used in build steps for Identity, Menu, Basket, Order, Payment, Promotion, Kitchen, Delivery, and Review services. Without it, each service drifts into slightly different conventions and the codebase becomes inconsistent.
+This skill encodes how every Spring Boot service in the food-delivery-platform monorepo is structured. It is the most-loaded skill across the project — used in build steps for Identity, Menu, Basket, Order, Payment, Promotion, Kitchen, Delivery, and Review services. Without it, each service drifts into slightly different conventions and the codebase becomes inconsistent.
 
 WHEN TO TRIGGER
 Auto-load this skill whenever the working directory is `services/{service-name}/` or whenever the user is editing:
@@ -326,13 +326,13 @@ CONTENT TO INCLUDE
    provider "aws" {
      default_tags {
        tags = {
-         Project     = "food-ordering-platform"
+         Project     = "food-delivery-platform"
          Environment = var.environment
          Service     = var.service_name        # null at env level, set per-module
          Owner       = var.owner_team
          CostCenter  = var.cost_center
          ManagedBy   = "terraform"
-         Repository  = "food-ordering-platform"
+         Repository  = "food-delivery-platform"
        }
      }
    }
@@ -570,7 +570,7 @@ CONTENT TO INCLUDE
 
 1. **Repository layout** (Maven perspective):
    ```
-   food-ordering-platform/                    — the monorepo root
+   food-delivery-platform/                    — the monorepo root
    ├── pom.xml                                — root reactor POM (lists all modules)
    ├── platform-bom/
    │   └── pom.xml                            — BOM with dependencyManagement only
@@ -601,7 +601,7 @@ CONTENT TO INCLUDE
    ```xml
    <project>
      <groupId>com.{org}.platform</groupId>
-     <artifactId>food-ordering-platform-parent</artifactId>
+     <artifactId>food-delivery-platform-parent</artifactId>
      <version>1.0.0-SNAPSHOT</version>
      <packaging>pom</packaging>
 
@@ -2214,7 +2214,7 @@ PURPOSE
 Phase 13 + every service deploy step interact with the GitOps repo structure. Get the layout wrong once and refactoring 10 services' manifests is painful. This skill encodes the kustomize layering and ArgoCD app definitions.
 
 WHEN TO TRIGGER
-- Working directory `food-ordering-gitops/`
+- Working directory `food-delivery-gitops/`
 - Editing `*.yaml` files under `apps/`, `argocd/`, or `kustomization.yaml`
 - User mentions ArgoCD, kustomize, "app of apps", "Argo Rollouts", canary, sync wave, AnalysisTemplate
 
@@ -2222,7 +2222,7 @@ CONTENT TO INCLUDE
 
 1. **Repository layout**:
    ```
-   food-ordering-gitops/
+   food-delivery-gitops/
    ├── apps/
    │   ├── identity-service/
    │   │   ├── base/
@@ -2408,7 +2408,7 @@ CONTENT TO INCLUDE
      name: services
    spec:
      sourceRepos:
-       - 'ssh://git-codecommit.{region}.amazonaws.com/v1/repos/food-ordering-gitops'
+       - 'ssh://git-codecommit.{region}.amazonaws.com/v1/repos/food-delivery-gitops'
      destinations:
        - namespace: 'identity'
          server: https://kubernetes.default.svc
@@ -2492,7 +2492,7 @@ EXAMPLES TO INCLUDE
 - Complete AppProject
 
 OUTPUT FORMAT
-Standard SKILL.md. Allowed tools: full edit access for `food-ordering-gitops/**`.
+Standard SKILL.md. Allowed tools: full edit access for `food-delivery-gitops/**`.
 ```
 
 ---
@@ -2685,7 +2685,7 @@ Phase 12 builds the observability stack. Every service phase produces logs, metr
 
 WHEN TO TRIGGER
 - Editing `application*.yml` with `management.*`, `logging.*`, `otel.*` keys
-- Editing files in `food-ordering-gitops/shared/observability/**`
+- Editing files in `food-delivery-gitops/shared/observability/**`
 - Editing Grafana dashboard JSON, PrometheusRule YAML
 - User mentions Prometheus, Grafana, OpenTelemetry, X-Ray, "trace ID", structured logging, SLO, alert
 - Editing PrometheusRule, ServiceMonitor, AnalysisTemplate
@@ -2826,7 +2826,7 @@ CONTENT TO INCLUDE
 
 12. **Runbook linkage**:
     - Every alert MUST include a `runbook` annotation pointing to a real document
-    - Runbooks live in `food-ordering-gitops/shared/observability/runbooks/`
+    - Runbooks live in `food-delivery-gitops/shared/observability/runbooks/`
 
 ANTI-PATTERNS TO FLAG
 - Metric names that change between releases (breaks dashboards)
@@ -3247,7 +3247,7 @@ CONTENT TO INCLUDE
    - `shared-libs`: any change in `platform-shared-libs/`
    - `bom`: changes to `platform-bom/`
    - `infra`: `platform-infra/` (Terraform)
-   - `gitops`: `food-ordering-gitops/`
+   - `gitops`: `food-delivery-gitops/`
    - `e2e`: end-to-end tests
 
 4. **Branch naming**:
@@ -3474,7 +3474,7 @@ CONTENT TO INCLUDE
    - `scripts/dev/issue-jwt.sh {role}` — issues a token for the given role
 
 9. **API testing**:
-   - Postman collection at `dev/postman/food-ordering.postman_collection.json`
+   - Postman collection at `dev/postman/food-delivery.postman_collection.json`
    - HTTPie scripts at `dev/scripts/api/`
    - Optional: `Insomnia` collection at `dev/insomnia/`
 

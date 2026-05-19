@@ -1,5 +1,5 @@
 # PROJECT.md
-Project-specific context for the Food Ordering System.
+Project-specific context for the Food Delivery System.
 
 ## Architecture
 Client → user-service (8081)   — auth / registration
@@ -139,7 +139,7 @@ order-service → Kafka (order-topics)
 - Databases: `user_db`, `order_db`, `payment_db` — created by `init-db/init.sh`
 
 ## Observability
-- Grafana: http://localhost:3000 — "Food Ordering System" dashboard auto-provisioned on startup
+- Grafana: http://localhost:3000 — "Food Delivery System" dashboard auto-provisioned on startup
 - Prometheus: http://localhost:9090 — scrapes all 6 services every 15s
 - Tempo (traces): http://localhost:3200
 - Loki (logs): http://localhost:3100

@@ -1,4 +1,4 @@
-# Hook Specifications — Food Ordering Platform
+# Hook Specifications — Food Delivery Platform
 
 > **Purpose**: Comprehensive specifications for all Claude Code hooks across the build. Each hook section includes: when it fires, what it checks, how it implements the check, edge cases, exit codes, and example output.
 >
@@ -814,7 +814,7 @@ exit 0
 ### Configuration: `.gitleaks.toml`
 
 ```toml
-title = "food-ordering-platform gitleaks config"
+title = "food-delivery-platform gitleaks config"
 
 [allowlist]
 description = "Test fixtures"
@@ -873,7 +873,7 @@ if ! command -v aws >/dev/null; then
   exit 0
 fi
 
-REGISTRY_NAME="${GLUE_SCHEMA_REGISTRY_NAME:-food-ordering-platform-staging}"
+REGISTRY_NAME="${GLUE_SCHEMA_REGISTRY_NAME:-food-delivery-platform-staging}"
 
 FAIL=0
 for f in $STAGED_SCHEMAS; do

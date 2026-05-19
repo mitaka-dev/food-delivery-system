@@ -1,4 +1,4 @@
-# Subagent Specifications — Food Ordering Platform
+# Subagent Specifications — Food Delivery Platform
 
 > **Purpose**: Comprehensive specifications for the 8 custom subagents in the build. Each subagent spec includes: role and scope, full system prompt, allowed tools, when the Build Lead calls it, handoff pattern (what comes in, what goes out), and concrete usage examples.
 >
@@ -89,7 +89,7 @@ The Build Lead doesn't have a custom system prompt beyond what Claude Code provi
 ```markdown
 # CLAUDE.md — Build Lead Guidance
 
-You are the Build Lead for the food-ordering-platform monorepo. Your role:
+You are the Build Lead for the food-delivery-platform monorepo. Your role:
 
 1. Drive implementation of build steps from `build-plan.md`, one step per session.
 2. Read `architecture.md` and `common-conventions.md` as the source of truth.
@@ -167,7 +167,7 @@ Owns Phase 8's correctness. Designs state transitions, idempotency guards, compe
 ## System prompt
 
 ```markdown
-You are the Saga Engineer for the food-ordering-platform's Order Service. Your sole responsibility is the correctness of the order saga: a 10-state, 13-transition state machine with compensating actions.
+You are the Saga Engineer for the food-delivery-platform's Order Service. Your sole responsibility is the correctness of the order saga: a 10-state, 13-transition state machine with compensating actions.
 
 CONTEXT YOU ALWAYS LOAD
 - `architecture.md` Section 7 (Order Flow) and Section 8 (Saga & Outbox)
@@ -365,7 +365,7 @@ OUTPUTS YOU PRODUCE
    - HEALTHCHECK directive
    - Build arg for service version
 
-7. K8S BASE MANIFESTS (in food-ordering-gitops, NOT here)
+7. K8S BASE MANIFESTS (in food-delivery-gitops, NOT here)
    This is the responsibility of Step X.5; you do NOT create them.
 
 8. README
@@ -386,7 +386,7 @@ CONVENTIONS YOU FOLLOW
 WHAT YOU DO NOT DO
 - You do NOT implement business logic. The skeleton has empty controller methods that throw `UnsupportedOperationException` with a TODO comment.
 - You do NOT create Kafka topics, S3 buckets, or any AWS infrastructure. That's Infra Architect's job in Phase 0.
-- You do NOT create K8s manifests in food-ordering-gitops. That's Step X.5's job.
+- You do NOT create K8s manifests in food-delivery-gitops. That's Step X.5's job.
 - You do NOT add subsequent build steps to build-plan.md.
 
 USE CONTEXT7
@@ -1050,8 +1050,8 @@ Owns Phase 12 (observability) and the operational concerns of Phase 15 (hardenin
 
 ## Tools allowed
 
-- Full read/write access to `food-ordering-gitops/shared/observability/**`
-- Full read/write access to `food-ordering-gitops/shared/runbooks/**`
+- Full read/write access to `food-delivery-gitops/shared/observability/**`
+- Full read/write access to `food-delivery-gitops/shared/runbooks/**`
 - Full read/write access to `chaos/**`
 - Full read/write access to `dr/**`
 - bash for `kubectl`, `argocd`, `aws cloudwatch`, `aws fis`
@@ -1223,7 +1223,7 @@ SRE Engineer:
 
 Build Lead → continues:
   - Reviews dashboard preview
-  - Commits to food-ordering-gitops/shared/observability/dashboards/
+  - Commits to food-delivery-gitops/shared/observability/dashboards/
   - ArgoCD syncs to staging
   - Verifies, marks 12.2 done.
 ```
@@ -1314,7 +1314,7 @@ Step 6: Communicate to stakeholders.
 
 YOUR WORKFLOW FOR AN IAM AUDIT
 
-Step 1: Enumerate all IAM roles in the project (`aws iam list-roles --path-prefix /food-ordering-platform/`).
+Step 1: Enumerate all IAM roles in the project (`aws iam list-roles --path-prefix /food-delivery-platform/`).
 Step 2: For each role, list attached policies.
 Step 3: For each policy, list statements.
 Step 4: Apply the checklist:

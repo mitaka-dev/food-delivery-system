@@ -1,4 +1,4 @@
-# Food Ordering System — Observability Reference
+# Food Delivery System — Observability Reference
 
 > Covers logging, distributed tracing, and metrics for all services.
 > Stack: **Loki** (logs) · **Tempo** (traces) · **Prometheus/Actuator** (metrics) · **Grafana** (dashboards)

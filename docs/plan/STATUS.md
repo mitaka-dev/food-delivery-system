@@ -17,7 +17,7 @@ The local development system is complete — 11 services running on Docker Compo
 The plan was substantially revised today:
 - **New "Build Strategy" section** — Spring profile strategy (`local` / `staging` / `production`), pilot-first sequencing (user-service goes end-to-end before the remaining 9 services), and detailed rationale for the two-repo layout.
 - **Total sessions: ~91** (was 85) — 6 new steps added: 2.6 (user-service audit gaps), 2.7 (deploy template checkpoint), 6.5 (basket audit gaps), 8.12 (order-service audit gaps), 11.5 (review audit gaps), 14.0 (per-service test scaffolding).
-- **`common-libs` renamed to `platform-shared-libs`** throughout the plan — affects file paths referenced in steps.
+- **`common-libs` naming used throughout** — an intermediate rename to `platform-shared-libs` was reverted; all file paths in the plan use `common-libs/`.
 - **Phase 5 renamed** to "Product (Restaurant Menu) Service" (was "Restaurant Menu Service").
 - **Steps 12.1 + 13.1–13.3 pulled forward** into the Phase 2 pilot — user-service ships with full observability and CI/CD before the remaining services are built.
 

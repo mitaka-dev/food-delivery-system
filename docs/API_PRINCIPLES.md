@@ -1,6 +1,6 @@
 # API Design Principles
 
-> **Purpose.** This is the rubric for any HTTP surface added to — or changed in — the Food Ordering System. Before writing a new controller, changing a DTO shape, or introducing a new service, read this file. Before merging, verify the change respects every principle.
+> **Purpose.** This is the rubric for any HTTP surface added to — or changed in — the Food Delivery System. Before writing a new controller, changing a DTO shape, or introducing a new service, read this file. Before merging, verify the change respects every principle.
 >
 > **Scope.** Applies to the 4 HTTP-exposing services: `gateway-service`, `user-service`, `order-service`, `product-service`. Event-driven services (`payment-service`, `analytics-service`) have no HTTP surface but should still obey principles 1 (consistency), 5 (error handling in logs/DLQs), 9 (idempotency), and 12 (testability).
 

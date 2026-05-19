@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>food.ordering.system</groupId>
-    <artifactId>food-ordering-system-parent</artifactId>
+    <artifactId>food-delivery-system-parent</artifactId>
     <version>1.0.0</version>
 
     <parent>
@@ -34,6 +34,7 @@
         <common.libs.version>1.0.0</common.libs.version>
         <springdoc.version>3.0.3</springdoc.version>
         <loki4j.version>2.0.3</loki4j.version>
+        <jjwt.version>0.12.6</jjwt.version>
         <maven.compiler.source>25</maven.compiler.source>
         <maven.compiler.target>25</maven.compiler.target>
     </properties>
@@ -55,6 +56,21 @@
                 <groupId>com.github.loki4j</groupId>
                 <artifactId>loki-logback-appender</artifactId>
                 <version>${loki4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-api</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-impl</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-jackson</artifactId>
+                <version>${jjwt.version}</version>
             </dependency>
             <dependency>
                 <groupId>software.amazon.awssdk</groupId>

@@ -1,4 +1,4 @@
-# Food Ordering System — Architecture Reference
+# Food Delivery System — Architecture Reference
 
 > **Purpose**: This is the architecture and design reference for a production-grade food ordering microservices platform on AWS. It describes *what* you're building and *why* the choices were made — not *how* to build it step-by-step.
 >
@@ -906,7 +906,7 @@ Goal: every commit is built, tested, scanned, and deployed automatically through
 ```
 CodeCommit repos (just two):
 
-food-ordering-platform/                     ← code + infra + tests
+food-delivery-platform/                     ← code + infra + tests
 ├── platform-bom/                           ← Maven Bill of Materials, pins ALL versions
 │   └── pom.xml
 ├── common-libs/                   ← Maven multi-module shared libraries
@@ -938,7 +938,7 @@ food-ordering-platform/                     ← code + infra + tests
 ├── e2e-tests/                              ← Postman/Newman or k6 scenarios
 └── pom.xml                                 ← root parent POM (Maven reactor)
 
-food-ordering-gitops/                       ← K8s manifests, watched by ArgoCD
+food-delivery-gitops/                       ← K8s manifests, watched by ArgoCD
 ├── apps/
 │   ├── user-service/
 │   │   ├── base/
@@ -960,7 +960,7 @@ Each service's CodePipeline uses an **EventBridge rule** as its source trigger i
 {
   "source": ["aws.codecommit"],
   "detail-type": ["CodeCommit Repository State Change"],
-  "resources": ["arn:aws:codecommit:eu-west-1:123:food-ordering-platform"],
+  "resources": ["arn:aws:codecommit:eu-west-1:123:food-delivery-platform"],
   "detail": {
     "event": ["referenceUpdated"],
     "referenceName": ["main"],
@@ -1039,8 +1039,8 @@ This Lambda is ~50 lines of Python and is provisioned by Terraform in Phase 13.
 | 6. Build Image | AWS CodeBuild | `docker buildx build`, multi-arch (amd64+arm64) |
 | 7. Push Image | Amazon ECR | Tag = git SHA, immutable, scan-on-push enabled |
 | 8. Inspector Scan | AWS Inspector v2 | Deep CVE scan; fail on Critical findings |
-| 9. Bump Tag | AWS CodeBuild | Commits image tag bump to `food-ordering-gitops` repo |
-| 10. Deploy Staging | ArgoCD on EKS | Auto-syncs from `food-ordering-gitops/apps/{service}/overlays/staging/` |
+| 9. Bump Tag | AWS CodeBuild | Commits image tag bump to `food-delivery-gitops` repo |
+| 10. Deploy Staging | ArgoCD on EKS | Auto-syncs from `food-delivery-gitops/apps/{service}/overlays/staging/` |
 | 11. Smoke Tests | AWS CodeBuild | Hits staging endpoints, runs k6 perf gate |
 | 12. Approval | AWS CodePipeline manual approval | Required for prod, sends SNS to PagerDuty |
 | 13. Canary | Argo Rollouts (on EKS) | 10% → 50% → 100% with auto-rollback hooks |
@@ -1050,13 +1050,13 @@ This Lambda is ~50 lines of Python and is provisioned by Terraform in Phase 13.
 
 ### 10.4 CodePipeline Definition (per service)
 
-Each service has its own pipeline; all 10 pipelines source from the same `food-ordering-platform` monorepo, distinguished by path filter:
+Each service has its own pipeline; all 10 pipelines source from the same `food-delivery-platform` monorepo, distinguished by path filter:
 
 ```
 Pipeline name: pipeline-{service-name}
 
 Trigger:
-  EventBridge rule on CodeCommit repository `food-ordering-platform`
+  EventBridge rule on CodeCommit repository `food-delivery-platform`
   Filter: changes under `services/{service-name}/**`
        OR `common-libs/**`
        OR `platform-bom/**`
@@ -1065,7 +1065,7 @@ Trigger:
 Stages:
   - Source
       Provider: CodeCommit (full repo clone)
-      Repo: food-ordering-platform
+      Repo: food-delivery-platform
       Branch: main
       Output: SourceArtifact
   - Build
@@ -1096,7 +1096,7 @@ Stages:
   - DeployStaging
       Provider: CodeBuild
       Project: gitops-bump-{service-name}-staging
-      Action: clone food-ordering-gitops, update kustomize image tag, commit, push
+      Action: clone food-delivery-gitops, update kustomize image tag, commit, push
       Note: ArgoCD auto-syncs within ~1 minute
   - SmokeTest
       Provider: CodeBuild
@@ -1158,10 +1158,10 @@ reports:
 
 ### 10.6 ArgoCD GitOps Flow
 
-ArgoCD runs as a deployment on the EKS cluster. It watches the `food-ordering-gitops` CodeCommit repo (via SSH key). When CodeBuild commits an image-tag bump, ArgoCD detects the change within ~1 minute and reconciles the cluster state — no human intervention.
+ArgoCD runs as a deployment on the EKS cluster. It watches the `food-delivery-gitops` CodeCommit repo (via SSH key). When CodeBuild commits an image-tag bump, ArgoCD detects the change within ~1 minute and reconciles the cluster state — no human intervention.
 
 ```
-food-ordering-gitops/
+food-delivery-gitops/
 ├── apps/
 │   ├── user-service/
 │   │   ├── base/

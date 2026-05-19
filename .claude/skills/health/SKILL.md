@@ -1,6 +1,6 @@
 ---
 name: health
-description: Check health of all running Food Ordering System services without starting anything. Use when the user asks if services are up, whether the system is running, wants a status check, or says things like "is everything healthy?", "are the services running?", or "what's the system status?".
+description: Check health of all running Food Delivery System services without starting anything. Use when the user asks if services are up, whether the system is running, wants a status check, or says things like "is everything healthy?", "are the services running?", or "what's the system status?".
 allowed-tools: Bash(curl *), Bash(docker *)
 ---
 

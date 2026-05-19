@@ -1,4 +1,4 @@
-# Food Ordering System — Build Plan for Claude Code
+# Food Delivery System — Build Plan for Claude Code
 
 > **Purpose**: A step-by-step build guide for Claude Code (Claude Pro) to construct a production-grade food ordering microservices platform on AWS.
 Each build step is sized to fit in a single Claude Pro session.

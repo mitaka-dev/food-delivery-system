@@ -1,4 +1,4 @@
-# Food Ordering System — Getting Started
+# Food Delivery System — Getting Started
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ sudo apt install jq
 ## Project Structure
 
 ```
-Food Ordering System/
+Food Delivery System/
 ├── common-libs/          # Shared DTOs, enums, Kafka constants
 ├── user-service/         # User registration, JWT auth (port 8081)
 ├── analytics-service/    # Kafka consumer, Redis counters (port 8082)

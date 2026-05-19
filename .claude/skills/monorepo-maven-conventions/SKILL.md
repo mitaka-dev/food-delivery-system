@@ -16,7 +16,7 @@ If it does have a version, remove it and add the version management to the root 
 ## Structure
 
 ```
-food-ordering-system-parent (root pom.xml)
+food-delivery-system-parent (root pom.xml)
 ├── common-libs                — shared events, constants, DTOs
 ├── user-service       :8081  — PostgreSQL (user_db) + Redis
 ├── analytics-service  :8082  — Redis only
@@ -80,7 +80,7 @@ Spring Boot BOM already manages: Spring Data, Spring Security, Spring Kafka, Mic
 ```xml
 <parent>
     <groupId>food.ordering.system</groupId>
-    <artifactId>food-ordering-system-parent</artifactId>
+    <artifactId>food-delivery-system-parent</artifactId>
     <version>1.0.0</version>
     <relativePath>../pom.xml</relativePath>
 </parent>

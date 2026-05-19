@@ -1,7 +1,7 @@
 apiVersion: 1
 
 providers:
-  - name: Food Ordering System
+  - name: Food Delivery System
     type: file
     disableDeletion: false
     updateIntervalSeconds: 30

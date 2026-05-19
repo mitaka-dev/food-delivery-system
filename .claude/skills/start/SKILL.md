@@ -1,11 +1,11 @@
 ---
 name: start
-description: Start the Food Ordering System — build, launch all services, and verify health. Use when the user wants to start, boot, spin up, launch, or run the system. Also handles --clean (fresh database) and --rebuild (force Maven rebuild) variants.
+description: Start the Food Delivery System — build, launch all services, and verify health. Use when the user wants to start, boot, spin up, launch, or run the system. Also handles --clean (fresh database) and --rebuild (force Maven rebuild) variants.
 disable-model-invocation: true
 allowed-tools: Bash
 ---
 
-Start the Food Ordering System by running the automated startup script, then verify all services are healthy.
+Start the Food Delivery System by running the automated startup script, then verify all services are healthy.
 
 ## Flags
 

@@ -1,6 +1,6 @@
 ---
 name: logs
-description: Tail logs for a Food Ordering System service. Use this skill whenever the user wants to view, watch, follow, or stream logs for any service — even if they say things like "show me what order-service is doing", "what's happening in payment", "watch the gateway logs", "tail kafka", or "list available log commands". Trigger even when the user doesn't say /logs explicitly.
+description: Tail logs for a Food Delivery System service. Use this skill whenever the user wants to view, watch, follow, or stream logs for any service — even if they say things like "show me what order-service is doing", "what's happening in payment", "watch the gateway logs", "tail kafka", or "list available log commands". Trigger even when the user doesn't say /logs explicitly.
 allowed-tools: Bash(docker *)
 argument-hint: "[service-name] [lines]"
 ---
