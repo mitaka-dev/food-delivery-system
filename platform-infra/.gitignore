@@ -1,0 +1,9 @@
+# Terraform downloaded providers and modules
+.terraform/
+
+# State files — stored in S3 once the remote backend is configured (Step 0.8)
+*.tfstate
+*.tfstate.backup
+
+# Plan output files
+*.tfplan

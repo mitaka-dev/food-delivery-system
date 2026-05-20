@@ -288,36 +288,34 @@ The build is split into **four versions**, each one shippable. The point of vers
 > Goal: provision all shared AWS infrastructure with Terraform before writing a single line of application code. By the end of this phase, you have a working EKS cluster with databases, queues, and ArgoCD ready to receive deployments.
 
 ### Step 0.1: Monorepo bootstrap & developer prerequisites
-- [x] **Objective**: Initialize the `food-delivery-platform` monorepo skeleton, the `food-delivery-gitops` companion repo, document local developer setup, and lock in the three-profile convention (`local`, `staging`, `production`).
-- **Files to create**:
-  - `food-delivery-platform/README.md` (top-level overview, links to the plan)
-  - `food-delivery-platform/.gitignore`
-  - `food-delivery-platform/.terraform-version` (1.7.5)
-  - `food-delivery-platform/.tool-versions` (asdf format: `java corretto-25`, `maven 3.9.x`, `terraform 1.7.5`, `kubectl 1.30.x`, `helm 3.15.x`)
-  - `food-delivery-platform/scripts/bootstrap-dev.sh` (installs awscli, kubectl, helm, terraform, sam, mvn)
-  - `food-delivery-platform/docs/developer-setup.md`
-  - `food-delivery-platform/docs/architecture.md` (copy of the architecture reference, maintained alongside the code)
-  - `food-delivery-platform/docs/spring-profiles.md` (the three-profile convention; describes `local` / `staging` / `production` / `local-aws`)
-  - `food-delivery-platform/.envrc.template` (direnv: AWS_PROFILE, AWS_REGION, CODEARTIFACT_AUTH_TOKEN refresh, SPRING_PROFILES_ACTIVE=local default)
-  - `food-delivery-platform/docker-compose.yml` (root-level: Postgres, Redis, Kafka in KRaft mode, LocalStack; used by every service when running under the `local` profile)
-  - `food-delivery-platform/dev/seed/` (seed data + scripts for local dev)
-  - Empty top-level dirs: `services/`, `platform-shared-libs/`, `platform-bom/`, `platform-infra/`, `e2e-tests/`
-  - `food-delivery-gitops/README.md` (companion repo, watched by ArgoCD)
-  - `food-delivery-gitops/.gitignore`
-  - Empty top-level dirs in gitops repo: `apps/`, `argocd/`
+- [x] **Objective**: Reorganize this repo as the `food-delivery-platform` monorepo, initialize the `food-delivery-gitops` companion repo, document local developer setup, and lock in the three-profile convention (`local`, `staging`, `production`).
+- **Decision**: Rather than creating a new `food-delivery-platform` repo from scratch, this existing repo was reorganized to serve as `food-delivery-platform`. All existing services (already built and working locally) were moved under `services/`. Only one new repo was created: `food-delivery-gitops` (at `../food-delivery-gitops/`).
+- **Files created/changed**:
+  - All service dirs moved: `{service-name}/` → `services/{service-name}/`
+  - Root `pom.xml` module paths updated (`services/{service-name}`)
+  - Service `pom.xml` `<relativePath>` fixed: `../pom.xml` → `../../pom.xml`
+  - `docker-compose.yml` build contexts and `SERVICE_PATH` args updated; observability image tags pinned
+  - `start.sh` JAR path check updated
+  - `.terraform-version` (1.7.5)
+  - `.tool-versions` (asdf: java corretto-25, maven 3.9.9, terraform 1.7.5, kubectl 1.30.7, helm 3.15.4)
+  - `.envrc.template` (direnv: AWS_PROFILE, AWS_REGION, CODEARTIFACT_AUTH_TOKEN refresh, SPRING_PROFILES_ACTIVE=local)
+  - `scripts/bootstrap-dev.sh` (idempotently installs all dev tools via asdf, CodeArtifact login)
+  - `docs/developer-setup.md`
+  - `docs/spring-profiles.md` (three-profile convention; shape-vs-values rule)
+  - Empty dirs with `.gitkeep`: `platform-bom/`, `platform-infra/`, `e2e-tests/`, `dev/seed/`
+  - `../food-delivery-gitops/` repo: README, .gitignore, `apps/`, `argocd/`
 - **Key details**:
-  - Two CodeCommit repos: `food-delivery-platform` (code+infra+tests), `food-delivery-gitops` (K8s manifests). Both initialized with a commit per the layout in `architecture.md` Section 10.1.
-  - **Spring profile convention** (locked in here so subsequent service phases follow it): three profiles — `local` (Docker Compose deps + LocalStack), `staging` (real AWS staging), `production` (real AWS production). Plus `local-aws` as a sparingly-used edge case (JVM local, AWS calls hit real staging). See "Build Strategy" section above. `docs/spring-profiles.md` documents the rule "profile controls shape, env vars provide values" with an example.
-  - Document the AWS account layout (single account v1, multi-account in Phase 5).
+  - `common-libs/` stays at repo root (correct name per plan — earlier rename to `platform-shared-libs` was reverted).
+  - CodeCommit remotes wired in Phase 0.8 once AWS is provisioned. GitHub remote (`mitaka-dev/food-delivery-system`) is the current remote for this repo.
+  - **Spring profile convention** (locked in here): three profiles — `local` (Docker Compose + LocalStack), `staging` (real AWS staging), `production` (real AWS production). Plus `local-aws` edge case. See `docs/spring-profiles.md`.
   - Naming convention: `{org}-{env}-{service}-{resource}` for every AWS resource.
   - Tag every AWS resource with `Project=food-delivery`, `Environment={dev|staging|prod}`, `Service={service-name}`, `Owner={team}`, `CostCenter={code}`.
-  - The `bootstrap-dev.sh` should idempotently install all dev tools and run `aws codeartifact login --tool maven --domain {org}-platform --repository internal` once Phase 0.8 has provisioned CodeArtifact.
   - Branch protection on `main` for both repos: 1 approval required, status checks must pass, no force-pushes.
-- **Acceptance criteria**: Both CodeCommit repos exist with the documented top-level structure. New developer can clone the platform repo, run `scripts/bootstrap-dev.sh`, and end up with all tools installed at correct versions. `docker-compose up` brings up local dependencies. `docs/spring-profiles.md` clearly describes the three profiles and the shape-vs-values rule.
+- **Acceptance criteria**: Repo reorganized with all services under `services/`. `mvn validate` passes across all modules. `docker compose up` works. `scripts/bootstrap-dev.sh` installs all tools. `docs/spring-profiles.md` documents the three profiles. `food-delivery-gitops` repo initialized.
 - **Dependencies**: none
 
 ### Step 0.2: Terraform — VPC and networking
-- [ ] **Objective**: Provision a multi-AZ VPC with public, private, and isolated subnets.
+- [x] **Objective**: Provision a multi-AZ VPC with public, private, and isolated subnets.
 - **Files to create**:
   - `platform-infra/modules/vpc/main.tf`
   - `platform-infra/modules/vpc/variables.tf`
