@@ -373,7 +373,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Note**: product-service uses Aurora PostgreSQL (not DynamoDB) — no DynamoDB table is needed for products.
 
 ### Step 0.6: Terraform — ElastiCache Redis cluster
-- [ ] **Objective**: Provision a shared Redis cluster used by Basket (primary store), Menu (cache), and rate limiting.
+- [x] **Objective**: Provision a shared Redis cluster used by Basket (primary store), Menu (cache), and rate limiting.
 - **Files to create**:
   - `platform-infra/modules/elasticache-redis/main.tf`
   - `platform-infra/envs/production/cache.tf`
