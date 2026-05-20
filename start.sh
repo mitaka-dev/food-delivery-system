@@ -105,11 +105,11 @@ fi
 step "Building services..."
 
 JARS=(
-  "user-service/target"
-  "analytics-service/target"
-  "order-service/target"
-  "payment-service/target"
-  "product-service/target"
+  "services/user-service/target"
+  "services/analytics-service/target"
+  "services/order-service/target"
+  "services/payment-service/target"
+  "services/product-service/target"
 )
 
 needs_build() {

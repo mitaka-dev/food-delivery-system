@@ -288,7 +288,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 > Goal: provision all shared AWS infrastructure with Terraform before writing a single line of application code. By the end of this phase, you have a working EKS cluster with databases, queues, and ArgoCD ready to receive deployments.
 
 ### Step 0.1: Monorepo bootstrap & developer prerequisites
-- [ ] **Objective**: Initialize the `food-delivery-platform` monorepo skeleton, the `food-delivery-gitops` companion repo, document local developer setup, and lock in the three-profile convention (`local`, `staging`, `production`).
+- [x] **Objective**: Initialize the `food-delivery-platform` monorepo skeleton, the `food-delivery-gitops` companion repo, document local developer setup, and lock in the three-profile convention (`local`, `staging`, `production`).
 - **Files to create**:
   - `food-delivery-platform/README.md` (top-level overview, links to the plan)
   - `food-delivery-platform/.gitignore`

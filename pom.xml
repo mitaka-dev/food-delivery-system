@@ -16,17 +16,17 @@
 
     <packaging>pom</packaging> <modules>
     <module>common-libs</module>
-    <module>user-service</module>
-    <module>order-service</module>
-    <module>product-service</module>
-    <module>payment-service</module>
-    <module>analytics-service</module>
-    <module>basket-service</module>
-    <module>kitchen-service</module>
-    <module>delivery-service</module>
-    <module>review-service</module>
-    <module>promotion-service</module>
-    <module>notification-service</module>
+    <module>services/user-service</module>
+    <module>services/order-service</module>
+    <module>services/product-service</module>
+    <module>services/payment-service</module>
+    <module>services/analytics-service</module>
+    <module>services/basket-service</module>
+    <module>services/kitchen-service</module>
+    <module>services/delivery-service</module>
+    <module>services/review-service</module>
+    <module>services/promotion-service</module>
+    <module>services/notification-service</module>
 </modules>
 
     <properties>
