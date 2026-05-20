@@ -11,6 +11,5 @@ module "vpc" {
   private_subnet_cidrs  = ["10.0.16.0/22", "10.0.20.0/22"]
   isolated_subnet_cidrs = ["10.0.100.0/24", "10.0.101.0/24"]
 
-  # One NAT gateway per AZ for high availability in production
-  single_nat_gateway = false
+  single_nat_gateway = true
 }

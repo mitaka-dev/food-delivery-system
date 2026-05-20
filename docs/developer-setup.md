@@ -44,8 +44,7 @@ cd services/user-service && ../../../mvnw spring-boot:run -Dspring-boot.run.prof
 See [spring-profiles.md](spring-profiles.md) for the full profile convention. Short version:
 
 - **`local`** — runs against Docker Compose containers + LocalStack. Default.
-- **`staging`** — runs against real AWS staging resources. EKS only.
-- **`production`** — runs against real AWS production resources. EKS only.
+- **`production`** — runs against real AWS resources. EKS only.
 
 `SPRING_PROFILES_ACTIVE=local` is set in `.envrc.template` so `local` is the default on your laptop.
 

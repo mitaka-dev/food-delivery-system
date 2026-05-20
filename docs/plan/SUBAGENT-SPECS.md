@@ -347,7 +347,7 @@ OUTPUTS YOU PRODUCE
 4. APPLICATION YML
    - `src/main/resources/application.yml` — base config per common-conventions.md Section 20
    - `application-local.yml` — local overrides (Postgres on localhost:5432, etc.)
-   - `application-staging.yml`, `application-production.yml` — env-specific overrides via env vars
+   - `application-production.yml` — env-specific overrides via env vars (real AWS resources)
 
 5. DATABASE SETUP
    PostgreSQL:
@@ -984,7 +984,7 @@ Step 0.4 (RDS Aurora provisioning):
 
 ```
 Build Lead → Infra Architect:
-  "Review platform-infra/envs/staging/databases.tf, which provisions Aurora PG
+  "Review platform-infra/envs/production/databases.tf, which provisions Aurora PG
    for identity, order, promotion, delivery services. terraform plan output attached."
 
 Infra Architect:

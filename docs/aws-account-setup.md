@@ -82,16 +82,16 @@ aws sts get-caller-identity
 # Returns Account, UserId, Arn — all from the new account
 ```
 
-## 7. Verify Terraform (staging VPC)
+## 7. Verify Terraform (VPC)
 
 ```bash
-cd platform-infra/envs/staging
+cd platform-infra/envs/production
 terraform init
 terraform plan    # should show ~38 resources, no errors
 terraform apply   # creates the VPC — takes ~3 min (NAT GW is slow)
 
 aws ec2 describe-vpcs \
-  --filters "Name=tag:Environment,Values=staging" \
+  --filters "Name=tag:Environment,Values=production" \
   --region eu-west-1
 # Returns the VPC with CIDR 10.0.0.0/16
 ```

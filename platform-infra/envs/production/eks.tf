@@ -12,7 +12,7 @@ module "eks" {
   # TODO Step 10: restrict to VPN CIDR once bastion is provisioned
   cluster_endpoint_public_access_cidrs = ["0.0.0.0/0"]
 
-  cloudwatch_log_retention_days = 90
+  cloudwatch_log_retention_days = 30
 
   # fargate_profile_groups uses module default: 3 grouped profiles covering all 15 namespaces
 

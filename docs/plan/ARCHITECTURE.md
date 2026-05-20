@@ -23,7 +23,7 @@ The platform is built in four versions, each shippable. Throughout this document
 | **[v3]** | Added in v3 (engagement features — review, promotion, notification). |
 | **[v4]** | Hardened in v4 (payment-service graduates from minimal to full production-grade). |
 
-**v1 is the reference implementation.** It contains every architectural pattern used across the whole platform — outbox, saga, gRPC, Resilience4j, the three Spring profiles, JWT auth, CodePipeline + ArgoCD GitOps, Argo Rollouts canaries, Prometheus + Grafana + X-Ray observability, SLO alerts, WAF, DR. v2/v3/v4 add more *instances* of these patterns; they don't introduce new patterns.
+**v1 is the reference implementation.** It contains every architectural pattern used across the whole platform — outbox, saga, gRPC, Resilience4j, the two Spring profiles, JWT auth, CodePipeline + ArgoCD GitOps, Argo Rollouts canaries, Prometheus + Grafana + X-Ray observability, SLO alerts, WAF, DR. v2/v3/v4 add more *instances* of these patterns; they don't introduce new patterns.
 
 When a section describes a feature with a `[v4]` tag and a `[v1 minimal]` callout, that means the v1 version exists in slim form and v4 hardens it. The clearest example is payment-service: v1 builds a minimal Stripe-test-mode integration; v4 adds webhooks, refunds, the full Resilience4j stack, and a DDB-Streams-based outbox.
 
@@ -164,7 +164,7 @@ Notification Lambda [v3] has its own topic subscriptions (Lambda has native MSK 
 
 **Logic**: On registration it writes the user record and a `USER_CREATED` event to the outbox in the same database transaction. JWT tokens are signed with RS256 and carry custom claims (`role`, `restaurantId`, `driverId`) so downstream services authorize without callbacks. Other services validate the JWT signature locally using the public key cached from Parameter Store. Login issues short-lived access tokens (15 min) plus refresh tokens (30 days) stored in Redis.
 
-This service is the **pilot for v1** — built first, end-to-end through staging, with its CI/CD pipeline and observability dashboard. The deploy template captured from this service (`docs/service-deploy-template.md`) becomes the template for every subsequent service across v1, v2, v3, and v4.
+This service is the **pilot for v1** — built first, end-to-end, with its CI/CD pipeline and observability dashboard. The deploy template captured from this service (`docs/service-deploy-template.md`) becomes the template for every subsequent service across v1, v2, v3, and v4.
 
 **AWS**: EKS Fargate in private subnet. RDS PostgreSQL with read replica for non-auth queries.
 
@@ -547,7 +547,7 @@ The platform is built in four shippable versions. The detailed phase-by-phase br
 
 The bulk of the platform's architectural surface is built in v1: foundation IaC (VPC, EKS, RDS, DynamoDB, MSK, SNS/SQS, ECR, CodeArtifact, ArgoCD), shared libraries and BOM, observability stack, CI/CD pipelines, and five services demonstrating every pattern.
 
-- **user-service** — the pilot. Built first, end-to-end through staging, with CI/CD pipeline and observability dashboard. The deploy template captured from this service becomes the template for every subsequent service across all four versions.
+- **user-service** — the pilot. Built first, end-to-end on EKS, with CI/CD pipeline and observability dashboard. The deploy template captured from this service becomes the template for every subsequent service across all four versions.
 - **product-service** — restaurant menus and items, cache-aside with Redis, gRPC server for internal verification.
 - **basket-service** — Redis-backed cart with upsert-by-productId and gRPC client to product-service.
 - **payment-service (minimal)** — SQS-driven, Stripe test mode, DDB ledger, idempotency, outbox to Kafka. Deliberately defers webhooks, refunds, full Resilience4j, DDB-Streams outbox.
@@ -927,7 +927,7 @@ These apply uniformly across all versions. The patterns established in v1 carry 
 
 Goal: every commit is built, tested, scanned, and deployed automatically through AWS-native services. **No GitHub Actions.** The full pipeline uses CodeCommit, CodeBuild, CodePipeline, ECR, CodeArtifact, and ArgoCD running on EKS.
 
-The pipeline architecture itself doesn't change across versions. v1 builds the path-filter Lambda, the buildspec templates, and the user-service staging pipeline (during the pilot phase). v1's later phases replicate the pipeline to the four other v1 services. v2/v3/v4 each add their services' pipelines via the same Terraform module — no new pipeline infrastructure work.
+The pipeline architecture itself doesn't change across versions. v1 builds the path-filter Lambda, the buildspec templates, and the user-service pipeline (during the pilot phase). v1's later phases replicate the pipeline to the four other v1 services. v2/v3/v4 each add their services' pipelines via the same Terraform module — no new pipeline infrastructure work.
 
 ### 10.1 Repository Layout
 
@@ -962,7 +962,6 @@ food-delivery-system/                       ← code + infra + tests
 │   ├── modules/
 │   ├── envs/
 │   │   ├── shared/
-│   │   ├── staging/
 │   │   └── production/
 │   └── buildspec-templates/
 ├── e2e-tests/                              ← Postman/Newman or k6 scenarios
@@ -972,7 +971,7 @@ food-delivery-system-gitops/                ← K8s manifests, watched by ArgoCD
 ├── apps/
 │   ├── user-service/
 │   │   ├── base/
-│   │   └── overlays/{staging,production}/
+│   │   └── overlays/production/
 │   └── ... (one per service, added as each version ships)
 └── argocd/
     ├── applications/                        (one Application per service per env)
@@ -1003,7 +1002,7 @@ A small Lambda inspects the commit's changed paths (via `git diff --name-only`) 
 - Push touches `services/order-service/**` → start `order-pipeline` only.
 - Push touches `common-libs/**` or `platform-bom/**` → start all currently-existing service pipelines (in parallel rebuilds).
 - Push touches `platform-infra/**` → start `infra-pipeline` (Terraform plan + apply with manual approval).
-- Push touches `e2e-tests/**` → start `e2e-pipeline` (test against staging only, no service rebuild).
+- Push touches `e2e-tests/**` → start `e2e-pipeline` (test against EKS, no service rebuild).
 
 This Lambda is ~50 lines of Python and is provisioned by Terraform in v1's pilot work (Phase 8 Step 8.1, executed during user-service pilot).
 
@@ -1070,9 +1069,9 @@ This Lambda is ~50 lines of Python and is provisioned by Terraform in v1's pilot
 | 7. Push Image | Amazon ECR | Tag = git SHA, immutable, scan-on-push enabled |
 | 8. Inspector Scan | AWS Inspector v2 | Deep CVE scan; fail on Critical findings |
 | 9. Bump Tag | AWS CodeBuild | Commits image tag bump to `food-delivery-system-gitops` repo |
-| 10. Deploy Staging | ArgoCD on EKS | Auto-syncs from `food-delivery-system-gitops/apps/{service}/overlays/staging/` |
-| 11. Smoke Tests | AWS CodeBuild | Hits staging endpoints, runs k6 perf gate |
-| 12. Approval | AWS CodePipeline manual approval | Required for prod, sends SNS to PagerDuty |
+| 10. Deploy | ArgoCD on EKS | Auto-syncs from `food-delivery-system-gitops/apps/{service}/overlays/production/` |
+| 11. Smoke Tests | AWS CodeBuild | Hits EKS endpoints, runs k6 perf gate |
+| 12. Approval | AWS CodePipeline manual approval | Required before canary, sends SNS to approvers |
 | 13. Canary | Argo Rollouts (on EKS) | 10% → 50% → 100% with auto-rollback hooks |
 | 14. Production | ArgoCD on EKS | Monitors live state, auto-heals drift |
 | Monitoring | CloudWatch + EventBridge | Pipeline events → SNS → PagerDuty |
@@ -1123,24 +1122,21 @@ Stages:
   - InspectorScan
       Provider: Lambda invoke
       Action: trigger AWS Inspector v2 image scan, wait, fail on Critical
-  - DeployStaging
+  - Deploy
       Provider: CodeBuild
-      Project: gitops-bump-{service-name}-staging
-      Action: clone food-delivery-system-gitops, update kustomize image tag, commit, push
+      Project: gitops-bump-{service-name}
+      Action: clone food-delivery-system-gitops, update kustomize image tag in overlays/production/, commit, push
       Note: ArgoCD auto-syncs within ~1 minute
   - SmokeTest
       Provider: CodeBuild
       Project: smoke-{service-name}
-      Action: hit staging health endpoints, run k6 perf script
-  - ProductionApproval
+      Action: hit EKS health endpoints, run k6 perf script
+  - Approval
       Provider: Manual
       NotificationArn: arn:aws:sns:...:pipeline-approvals
-      ApproversIamGroup: production-deployers
-  - DeployProduction
-      Provider: CodeBuild
-      Project: gitops-bump-{service-name}-production
-      Action: same as staging but updates production overlay
-      Note: Argo Rollouts handles canary 10→50→100%
+      ApproversIamGroup: deployers
+  - Canary
+      Note: Argo Rollouts handles canary 10→50→100% on the same EKS cluster
 ```
 
 ### 10.6 CodeBuild buildspec Example (build stage)
@@ -1201,19 +1197,16 @@ food-delivery-system-gitops/
 │   │   │   ├── servicemonitor.yaml
 │   │   │   └── kustomization.yaml
 │   │   └── overlays/
-│   │       ├── staging/
-│   │       │   ├── kustomization.yaml
-│   │       │   ├── image-tag.yaml      ← CodeBuild updates this
-│   │       │   ├── replicas.yaml
-│   │       │   └── env-config.yaml
 │   │       └── production/
-│   │           └── ... same shape
+│   │           ├── kustomization.yaml
+│   │           ├── image-tag.yaml      ← CodeBuild updates this
+│   │           ├── replicas.yaml
+│   │           └── env-config.yaml
 │   └── ... (one folder per service, added as each version ships)
 └── argocd/
     └── applications/
-        ├── user-service-staging.yaml
-        ├── user-service-production.yaml
-        └── ... (one Application per service per env)
+        ├── user-service.yaml
+        └── ... (one Application per service)
 ```
 
 ### 10.8 Lambda Service (Notification) Variation `[v3]`
@@ -1221,19 +1214,17 @@ food-delivery-system-gitops/
 Notification Service runs on Lambda, not EKS. Its pipeline differs at the deployment stage:
 
 ```
-DeployStaging:
+Deploy:
   Provider: CodeBuild
-  Project: sam-deploy-notification-staging
-  Action: sam build && sam deploy --stack-name notification-staging --no-confirm-changeset
-  Uses: AWS SAM CLI + CodeDeploy with canary alias (10% / 5min)
-DeployProduction:
-  Same with prod stack name, canary 10% / 10min
+  Project: sam-deploy-notification
+  Action: sam build && sam deploy --stack-name notification --no-confirm-changeset
+  Uses: AWS SAM CLI + CodeDeploy with canary alias (10% / 10min)
   CloudWatch alarm on errors triggers CodeDeploy rollback
 ```
 
 ### 10.9 Cross-Service Pipeline Reuse
 
-To avoid maintaining 10 nearly-identical pipelines, define them as Terraform modules in `platform-infra/modules/service-pipeline`. Each service's directory in `platform-infra/envs/{env}/pipelines` instantiates the module with its name and a few parameters:
+To avoid maintaining 10 nearly-identical pipelines, define them as Terraform modules in `platform-infra/modules/service-pipeline`. Each service's file in `platform-infra/envs/production/pipelines/` instantiates the module with its name and a few parameters:
 
 ```hcl
 module "user_pipeline" {

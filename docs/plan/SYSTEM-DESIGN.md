@@ -205,9 +205,9 @@ Each order generates roughly 25 read operations across its lifecycle:
 
 | Topic | Partitions | Reasoning |
 |---|---|---|
-| `user-events` | 3 staging / 6 prod | Low rate, even distribution by userId |
-| `order-events` | 6 staging / 12 prod | Peak 1.67 orders/sec × 4 events/order = 7 events/sec. 12 partitions gives 0.6 events/sec/partition with headroom for 10× growth |
-| `payment-events` | 3 staging / 6 prod | Same rate as orders but fewer events |
+| `user-events` | 3 | Low rate, even distribution by userId |
+| `order-events` | 6 | Peak 1.67 orders/sec × 4 events/order = 7 events/sec. 6 partitions gives ~1.2 events/sec/partition with headroom for 5× growth |
+| `payment-events` | 3 | Same rate as orders but fewer events |
 | `kitchen-events` (v2) | 3 / 6 | Bounded by restaurant count (3k) |
 | `delivery-events` (v2) | 3 / 6 | Bounded by active driver count |
 | `driver-status` (v2) | 12 / 12 | Per-driver ordering required; high cardinality |
@@ -726,7 +726,7 @@ PII (email, phone, delivery address) is bounded to:
 
 ### 11.3 Chaos engineering plan
 
-Once v1 is in production for 30 days with stable SLOs, run AWS Fault Injection Simulator scenarios in staging weekly:
+Once v1 is in production for 30 days with stable SLOs, run AWS Fault Injection Simulator scenarios weekly (during low-traffic windows):
 
 | Scenario | Expected behavior |
 |---|---|
@@ -801,8 +801,8 @@ Architectural changes required: regional partitioning, CQRS read models, multi-r
 
 | Question | How to answer |
 |---|---|
-| Is MSK Serverless pricing acceptable at our throughput? | Measure during v1 staging. Switch to MSK Provisioned if Serverless exceeds $300/mo. |
-| Does Aurora Serverless v2 ramp fast enough for rush onset? | Load-test the lunch-rush ramp in staging. Set min ACU to absorb the ramp lag if needed. |
+| Is MSK Serverless pricing acceptable at our throughput? | Measure after v1 launches. Switch to MSK Provisioned if Serverless exceeds $300/mo. |
+| Does Aurora Serverless v2 ramp fast enough for rush onset? | Load-test the lunch-rush ramp. Set min ACU to absorb the ramp lag if needed. |
 | Is the outbox polling lag (~500ms) acceptable end-to-end? | Measure saga e2e latency under load. Move to DDB Streams (kitchen, payment v4) or Debezium CDC (post-v4) if needed. |
 | Does the saga timeout enforcer scale linearly? | Once order count hits 100k active in non-terminal states, profile the scan query. Add index if needed. |
 

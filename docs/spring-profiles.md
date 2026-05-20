@@ -1,10 +1,10 @@
 # Spring Profile Convention
 
-Every service in this platform runs under exactly one of three Spring profiles. The profile controls the **shape** of dependencies — which beans load, whether IAM auth is required, whether TLS is enforced. It does **not** carry environment-specific values like hostnames, passwords, or topic names; those come from environment variables injected at runtime.
+Every service in this platform runs under exactly one of two Spring profiles. The profile controls the **shape** of dependencies — which beans load, whether IAM auth is required, whether TLS is enforced. It does **not** carry environment-specific values like hostnames, passwords, or topic names; those come from environment variables injected at runtime.
 
 > **Rule: profile controls shape, env vars provide values.**
 
-## The Three Profiles
+## The Two Profiles
 
 ### `local`
 
@@ -17,25 +17,21 @@ JVM runs on a developer laptop. Dependencies are Docker Compose containers defin
 
 Activated by default via `.envrc` (`SPRING_PROFILES_ACTIVE=local`). Run `docker compose up -d` before starting any service.
 
-### `staging`
-
-Service runs on EKS staging. Talks to real AWS staging resources.
-
-- Aurora PostgreSQL staging cluster (URL from `DB_URL` env var)
-- ElastiCache Redis staging cluster (TLS, auth token from env var)
-- MSK staging cluster (`SASL_SSL` + `AWS_MSK_IAM` auth)
-- Real DynamoDB, SNS, SQS, S3 — no LocalStack, no endpoint override
-- Values injected by Kubernetes from ConfigMaps and Secrets (via External Secrets Operator pulling from AWS Secrets Manager)
-
 ### `production`
 
-Same shape as `staging`. Pointed at production AWS resources via env vars. Never run locally.
+Service runs on EKS. Talks to real AWS resources.
+
+- Aurora PostgreSQL cluster (URL from `DB_URL` env var)
+- ElastiCache Redis cluster (TLS, auth token from env var)
+- MSK cluster (`SASL_SSL` + `AWS_MSK_IAM` auth)
+- Real DynamoDB, SNS, SQS, S3 — no LocalStack, no endpoint override
+- Values injected by Kubernetes from ConfigMaps and Secrets (via External Secrets Operator pulling from AWS Secrets Manager)
 
 ## The Edge-Case Profile
 
 ### `local-aws`
 
-JVM runs on a developer laptop, but AWS SDK calls hit **real AWS staging** instead of LocalStack. Use sparingly — only when debugging an issue that reproduces against real DynamoDB or real MSK but not against LocalStack.
+JVM runs on a developer laptop, but AWS SDK calls hit **real AWS** instead of LocalStack. Use sparingly — only when debugging an issue that reproduces against real DynamoDB or real MSK but not against LocalStack.
 
 Activate explicitly: `-Dspring.profiles.active=local-aws`. Not the default for any workflow.
 
@@ -61,7 +57,7 @@ aws:
     secret-access-key: dev
 ```
 
-**`application-staging.yml`** (shape: real AWS, values from env):
+**`application-production.yml`** (shape: real AWS, values from env):
 
 ```yaml
 spring:
@@ -76,8 +72,6 @@ spring:
       sasl.mechanism: AWS_MSK_IAM
 # no aws.endpoint-override — SDK hits real AWS
 ```
-
-`application-production.yml` has the same shape as staging; only the env var values differ.
 
 ## What Belongs Where
 

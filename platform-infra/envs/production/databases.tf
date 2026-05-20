@@ -7,11 +7,11 @@ module "rds" {
   isolated_subnet_ids = module.vpc.isolated_subnet_ids
   vpc_cidr_block      = module.vpc.vpc_cidr_block
 
-  min_capacity          = 2
-  max_capacity          = 32
-  instance_count        = 2
-  backup_retention_days = 35
-  deletion_protection   = true
+  min_capacity          = 0.5
+  max_capacity          = 4
+  instance_count        = 1
+  backup_retention_days = 7
+  deletion_protection   = false
 
   tags = { Project = "food-delivery" }
 }
