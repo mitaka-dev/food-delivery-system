@@ -352,7 +352,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 0.2
 
 ### Step 0.4: Terraform — RDS Aurora PostgreSQL cluster
-- [ ] **Objective**: Provision a shared Aurora PostgreSQL cluster used by Identity, Order, Promotion, Delivery (one DB per service in the same cluster).
+- [x] **Objective**: Provision a shared Aurora PostgreSQL cluster used by Identity, Order, Promotion, Delivery (one DB per service in the same cluster).
 - **Files to create**:
   - `platform-infra/modules/rds-aurora/main.tf`
   - `platform-infra/modules/rds-aurora/variables.tf`
