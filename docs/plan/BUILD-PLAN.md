@@ -96,7 +96,7 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 
 ## Build Strategy
 
-> Read this section before starting Phase 0. It explains how the 85 build steps are sequenced and a few cross-cutting decisions that apply to every phase. The plan below makes more sense once you've absorbed these.
+> Read this section before starting Phase 0. It explains how the 98 build steps are sequenced and a few cross-cutting decisions that apply to every phase. The plan below makes more sense once you've absorbed these.
 
 ### Spring profile strategy (three profiles plus one edge case)
 
@@ -1324,7 +1324,7 @@ The build is split into **four versions**, each one shippable. The point of vers
   - `platform-infra/envs/staging/pipelines/identity-pipeline.tf`
 - **Key details**:
   - Module variables: `service_name`, `service_path` (e.g., `services/user-service`), `java_version` (default `25`), `has_database` (toggles PG Testcontainer), `has_grpc`, `has_kafka` (toggles Kafka Testcontainer), `target_env`.
-  - The module **does not** create its own EventBridge rule — instead it registers the pipeline with the path-filter Lambda from 13.1 (via SSM Parameter Store config).
+  - The module **does not** create its own EventBridge rule — instead it registers the pipeline with the path-filter Lambda from 8.1 (via SSM Parameter Store config).
   - Pipeline stages match `architecture.md` Section 10.4: Source (CodeCommit `food-delivery-platform`) → Build → Test (parallel) → IntegrationTest → SAST/SCA → PackageAndPush → InspectorScan → DeployStaging (gitops bump) → SmokeTest → ProductionApproval → DeployProduction.
   - Inspector scan as a Lambda action that polls Inspector v2 API for image findings, fails on Critical.
   - All artifacts stored in a per-pipeline S3 bucket with KMS encryption + 90-day lifecycle.

@@ -2,19 +2,53 @@
 set -euo pipefail
 
 STATUS_FILE="docs/plan/STATUS.md"
+PLAN_FILE="docs/plan/BUILD-PLAN.md"
 
 if [ ! -f "$STATUS_FILE" ]; then
   exit 0
 fi
 
 python3 - <<'PYEOF'
-import json, pathlib
+import json
+import pathlib
+import re
 
-content = pathlib.Path("docs/plan/STATUS.md").read_text()
+status = pathlib.Path("docs/plan/STATUS.md").read_text()
+plan_path = pathlib.Path("docs/plan/BUILD-PLAN.md")
+
+progress_block = ""
+if plan_path.exists():
+    plan = plan_path.read_text()
+    total = len(re.findall(r"^- \[[ x]\]", plan, re.M))
+    done = len(re.findall(r"^- \[x\]", plan, re.M))
+    pct = (done * 100 // total) if total else 0
+
+    last_done, next_step, current_header = None, None, None
+    for line in plan.splitlines():
+        m = re.match(r"^### Step ([0-9]+\.[0-9]+):\s*(.+)$", line)
+        if m:
+            current_header = f"{m.group(1)} — {m.group(2)}"
+            continue
+        if current_header:
+            if re.match(r"^- \[x\]", line):
+                last_done = current_header
+            elif re.match(r"^- \[ \]", line) and next_step is None:
+                next_step = current_header
+
+    progress_block = (
+        f"## Build Plan Progress (computed at session start)\n"
+        f"- **Progress:** {done} / {total} steps complete ({pct}%)\n"
+        f"- **Last completed step:** {last_done or 'none yet'}\n"
+        f"- **Next planned step:** {next_step or 'all complete'}\n\n"
+    )
+
 print(json.dumps({
     "hookSpecificOutput": {
         "hookEventName": "SessionStart",
-        "additionalContext": f"=== Project Status (docs/plan/STATUS.md) ===\n{content}"
+        "additionalContext": (
+            f"=== Project Status (docs/plan/STATUS.md) ===\n"
+            f"{progress_block}{status}"
+        )
     }
 }))
 PYEOF
