@@ -119,9 +119,10 @@ The system is split into ten microservices organized by domain. All services run
    │                                     │     DATA TIER (polyglot)            │
    │  ┌──────────────────────┐  ┌──────────────────────┐                       │
    │  │  RDS Aurora          │  │  DynamoDB            │                       │
-   │  │  PostgreSQL          │  │  Product, Kitchen,   │                       │
-   │  │  User, Order,        │  │  Payment, Review,    │                       │
-   │  │  Promotion, Delivery │  │  Idempotency keys    │                       │
+   │  │  PostgreSQL          │  │  Kitchen, Payment,   │                       │
+   │  │  User, Product,      │  │  Review,             │                       │
+   │  │  Order, Promotion,   │  │  Idempotency keys    │                       │
+   │  │  Delivery            │  │                      │                       │
    │  └──────────────────────┘  └──────────────────────┘                       │
    │  ┌──────────────────────┐  ┌──────────────────────┐                       │
    │  │  ElastiCache Redis   │  │  S3 + CloudFront     │                       │
@@ -178,17 +179,17 @@ This service is the **pilot for v1** — built first, end-to-end through staging
 
 ### 2.2 Product Service `[v1]`
 
-**Role**: The "Digital Menu" for all restaurants. Products are the items a restaurant sells; a restaurant's menu is the collection of its currently-active products.
+**Role**: Product catalog with stock management. Products are items with a price, category, and stock level — referenced by Basket and Order services.
 
-**Logic**: Read-heavy service with a 1000:1 read/write ratio. Cache-aside with Redis: read tries cache first, falls through to DynamoDB on miss, populates cache with 30-minute TTL. Writes (price changes, new items) update DynamoDB then explicitly purge affected Redis keys. Supports menu schedules (breakfast 06:00–11:00, dinner 17:00–22:00). Exposes a gRPC endpoint for Basket and Order services to verify item availability and current price in real time. Subscribes to `RESTAURANT_PAUSED` events from Kitchen Service [v2] and hides the restaurant from search results.
+**Logic**: Read-heavy service with a high read/write ratio. Cache-aside with Redis: read tries cache first, falls through to Aurora PostgreSQL on miss, populates cache with 30-minute TTL. Writes (price changes, stock updates) use JPA with `@Version` optimistic locking then explicitly purge the affected Redis key. Exposes a gRPC endpoint for Basket and Order services to verify item availability and current price in real time. Subscribes to `RESTAURANT_PAUSED` events from Kitchen Service [v2] and hides associated products from results.
 
-**AWS**: EKS Fargate. DynamoDB for flexible product schemas. ElastiCache Redis for performance. S3 + CloudFront for product images.
+**AWS**: EKS Fargate. Aurora PostgreSQL (shared cluster from Step 0.4) for product catalog. ElastiCache Redis for caching. S3 + CloudFront for product images.
 
 **Key endpoints**:
-- `GET /v1/restaurants/{id}/menu` (public, cached)
-- `GET /v1/restaurants/search?q=...&cuisine=...` (public)
-- `POST /v1/restaurants/{id}/menu/items` (restaurant-owner authenticated)
-- `gRPC ProductService.VerifyItem(restaurantId, itemId)` (internal)
+- `GET /v1/products` (public, paginated, category-filtered)
+- `GET /v1/products/{id}` (public, cached)
+- `POST /v1/products` (ADMIN authenticated)
+- `gRPC ProductService.VerifyProduct(productId)` (internal)
 
 ### 2.3 Basket Service `[v1]`
 
@@ -340,14 +341,13 @@ This section provides a service-by-service breakdown of every AWS resource you w
 | Concern | AWS Service | Notes |
 |---|---|---|
 | Compute | EKS Fargate | 3+ replicas, autoscale on RPS |
-| Primary store | DynamoDB `products` table | On-demand billing |
+| Primary store | Aurora PostgreSQL (shared cluster) | `products` table with `@Version` optimistic locking |
 | Image storage | S3 bucket `product-images-{env}` | Versioning enabled |
 | Image CDN | CloudFront distribution | 24-hour cache |
 | Cache layer | ElastiCache Redis | Cluster Mode, 30-min TTL |
-| Search backing | OpenSearch (optional, post-v4) | Synced via DDB Streams |
 | Internal API | gRPC over HTTP/2 on ALB | Internal only |
 | **Event consumption** | **MSK consumer for `kitchen-events` topic** `[v2-active]` | **For `RESTAURANT_PAUSED`/`RESTAURANT_RESUMED`. Topic doesn't exist until v2; product-service simply has nothing to consume from it in v1.** |
-| IAM | IRSA (DDB read/write, S3 read, Redis access, MSK consume) | |
+| IAM | IRSA (Aurora access via Secrets Manager, S3 read, Redis access, MSK consume) | |
 
 ### 3.3 Basket Service `[v1]`
 | Concern | AWS Service | Notes |
@@ -488,11 +488,10 @@ These services need ACID transactions because they all rely on the outbox patter
 
 PostgreSQL gives us all of this with read replicas for reporting and HA via Multi-AZ. Aurora Serverless v2 is the recommended starting point for cost.
 
-### 5.2 DynamoDB — Product, Kitchen, Payment, Review
+### 5.2 DynamoDB — Kitchen, Payment, Review
 
-These services have access patterns dominated by single-key lookups, predictable high throughput, or polymorphic data shapes.
+These services have access patterns dominated by single-key lookups, predictable high throughput, or polymorphic data shapes. Product Service uses Aurora PostgreSQL (see section 5.1) — its access patterns are relational and benefit from optimistic locking and full-text queries.
 
-- **Product** `[v1]` has hierarchical, polymorphic data (categories → items → modifiers, with restaurant-specific schemas) that fits a document model. Access pattern: `GetItem(restaurantId)` returns the entire menu.
 - **Kitchen** `[v2]` is keyed by `restaurantId` for active tickets — single-key access pattern. Atomic counter for capacity.
 - **Payment** `[v1 minimal / v4 full]` uses an immutable ledger keyed by `paymentIntentId`, with a GSI on `idempotencyKey` for the duplicate-charge check. Append-only. v1 has 3 entry types (`INITIATED`, `CAPTURED`, `FAILED`); v4 adds 3 more (`AUTHORIZED`, `REFUNDED`, `DISPUTED`).
 - **Review** `[v3]` needs flexible schema (different fields for restaurant vs. driver vs. meal reviews) and high write throughput. DynamoDB on-demand handles unpredictable load (lunch and dinner rushes).

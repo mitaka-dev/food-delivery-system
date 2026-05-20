@@ -217,7 +217,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 **v1's 5 services and their roles:**
 
 - **user-service** — registration, login, JWT issuance. Outbox emits `USER_CREATED`. (Pattern shown: outbox, Spring Security, JWT auth, RDS Aurora.)
-- **product-service** — restaurant menus, products, search. (Pattern shown: cache-aside with Redis, DynamoDB single-table design, S3 image uploads, gRPC server.)
+- **product-service** — product catalog with stock management. (Pattern shown: cache-aside with Redis, PostgreSQL with optimistic locking for concurrent stock updates, S3 product images, gRPC server.)
 - **basket-service** — cart with upsert-by-productId. (Pattern shown: Redis as primary store, gRPC client to product-service, request idempotency keys.)
 - **payment-service (minimal)** — calls Stripe test mode, records ledger entry, emits PAYMENT_SUCCESS / PAYMENT_FAILED. (Pattern shown: DDB ledger, idempotency on external API calls, outbox emitting to Kafka.)
 - **order-service (mini-saga)** — 6-state state machine: PENDING → PAID → COMPLETED, plus PAYMENT_FAILED → COMPENSATING → CANCELED. One compensation action: restore the basket. (Pattern shown: saga pattern, Spring StateMachine, compensation handlers, idempotent event consumers, optimistic locking, saga timeout enforcer.)
@@ -370,23 +370,14 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Acceptance criteria**: Can `psql` from a bastion or EKS pod using credentials from Secrets Manager.
 - **Dependencies**: 0.2
 
-### Step 0.5: Terraform — DynamoDB tables
-- [ ] **Objective**: Create all DynamoDB tables used by Menu, Kitchen, Payment, Review, and Notification idempotency.
-- **Files to create**:
-  - `platform-infra/modules/dynamodb-table/main.tf`
-  - `platform-infra/envs/staging/dynamodb.tf`
-  - `platform-infra/envs/production/dynamodb.tf`
-- **Key details**:
-  - On-demand billing for all tables
-  - Tables to create: `menus`, `tickets` (Kitchen), `payment-ledger`, `outbox-payment`, `outbox-kitchen`, `reviews`, `review-aggregates`, `notification-idempotency`
-  - Streams enabled on `menus`, `outbox-payment`, `outbox-kitchen`, `reviews`
-  - Point-in-time recovery on `payment-ledger`
-  - GSI on `payment-ledger`: `idempotency_key` for duplicate detection
-  - GSI on `tickets`: `restaurant_id` for "list active tickets per restaurant"
-  - TTL attribute on `notification-idempotency` (7-day expiry)
-  - Server-side encryption with KMS CMK per table
-- **Acceptance criteria**: All tables visible in console with correct keys, indexes, and streams.
-- **Dependencies**: 0.2
+### Step 0.5: Terraform — DynamoDB tables *(deferred to service phases)*
+- **Removed from Phase 0.** Provisioning DynamoDB tables weeks before the services that use them adds no value — same principle as MSK topics in Step 0.7 (*"provisioned when their respective phases land, not now"*). Each table is created alongside its service phase:
+  - `payment-ledger` + `outbox-payment` → **Step 5.1** (payment-service skeleton)
+  - `tickets` + `outbox-kitchen` → **Step 11.1** (kitchen-service)
+  - `reviews` + `review-aggregates` → **Step 15.1** (review-service)
+  - `notification-idempotency` → **Step 17.3** (notification-service)
+- The reusable `platform-infra/modules/dynamodb-table/` Terraform module (KMS CMK per table, on-demand billing, optional streams/PITR/TTL/GSI) is created in Step 5.1 when first needed, then reused in all later phases.
+- **Note**: product-service uses Aurora PostgreSQL (not DynamoDB) — no DynamoDB table is needed for products.
 
 ### Step 0.6: Terraform — ElastiCache Redis cluster
 - [ ] **Objective**: Provision a shared Redis cluster used by Basket (primary store), Menu (cache), and rate limiting.
@@ -790,83 +781,67 @@ The build is split into **four versions**, each one shippable. The point of vers
 
 > Goal: a working product/menu service with cache-aside, image upload via pre-signed URLs, gRPC verification endpoint, and the public search API.
 
-### Step 3.1: product-service skeleton + DynamoDB integration
-- [ ] **Objective**: Spring Boot service with AWS SDK v2 DynamoDB client and basic CRUD.
-- **Files to create**:
-  - `services/product-service/pom.xml`
-  - `services/product-service/src/main/java/.../ProductApplication.java`
-  - `services/product-service/src/main/java/.../config/DynamoDbConfig.java`
-  - `services/product-service/src/main/java/.../domain/Menu.java`
-  - `services/product-service/src/main/java/.../domain/MenuItem.java`
-  - `services/product-service/src/main/java/.../domain/MenuRepository.java`
-  - `services/product-service/src/main/resources/application.yml`
-  - `services/product-service/Dockerfile`
+### Step 3.1: product-service — Aurora wiring + Flyway migrations + test coverage
+- [ ] **Objective**: Prepare the existing product-service for AWS deployment — wire Aurora PostgreSQL via the staging Spring profile and add Flyway schema migrations replacing the `ddl-auto: update` used locally.
+- **Files to create/edit**:
+  - `services/product-service/src/main/resources/application-staging.yml` (Aurora datasource via `${AURORA_ENDPOINT}`, credentials from Secrets Manager wired at Step 0.11)
+  - `services/product-service/src/main/resources/db/migration/V1__create_products.sql`
+  - `services/product-service/src/test/java/.../repository/ProductRepositoryIT.java` (Testcontainers PostgreSQL)
+  - `services/product-service/Dockerfile` (if not already present)
 - **Key details**:
-  - DynamoDB Enhanced Client (Java SDK v2)
-  - Schema: PK = `RESTAURANT#{restaurantId}`, SK = `MENU` for the full menu document; SK = `ITEM#{itemId}` for individual items
-  - `Menu` is a denormalized document containing categories → items → modifiers
-  - `MenuItem` fields: `id`, `name`, `description`, `price` (Money), `imageS3Key`, `availability`, `schedule` (optional), `dietaryTags`
-  - All amounts use `BigDecimal` via the Money shared DTO
-- **Acceptance criteria**: Local Spring Boot test against Testcontainers DynamoDB Local writes a menu, reads it back, asserts equality.
+  - Schema: `products` table — `id` (UUID PK), `name`, `description`, `price` (NUMERIC), `category` (VARCHAR), `stock` (INTEGER), `version` (BIGINT for optimistic locking)
+  - `@Version` optimistic locking already in place — verify tests cover the `OptimisticLockingFailureException` path on concurrent stock updates
+  - Staging profile points at Aurora; local profile keeps the Docker Postgres datasource unchanged
+  - Uses Aurora PostgreSQL (provisioned in Step 0.4) — no new infrastructure needed
+- **Acceptance criteria**: `@DataJpaTest` + Testcontainers write a product, read it back, assert equality. Concurrent stock update test confirms `OptimisticLockingFailureException` fires correctly.
 - **Dependencies**: 1.4
 
-### Step 3.2: Public REST endpoints + caching layer
-- [ ] **Objective**: Implement `GET /v1/restaurants/{id}/menu` and `GET /v1/restaurants/search` with cache-aside.
+### Step 3.2: Caching layer + search endpoint
+- [ ] **Objective**: Add Redis cache-aside in front of product reads and a search endpoint.
 - **Files to create**:
-  - `services/product-service/src/main/java/.../api/MenuController.java`
-  - `services/product-service/src/main/java/.../service/MenuService.java`
-  - `services/product-service/src/main/java/.../cache/MenuCache.java`
-  - `services/product-service/src/main/java/.../cache/RedisCacheConfig.java`
-  - `services/product-service/src/main/resources/application-cache.yml`
-  - `services/product-service/src/test/java/.../service/MenuServiceCacheIT.java`
+  - `services/product-service/src/main/java/.../cache/ProductCacheConfig.java`
+  - `services/product-service/src/test/java/.../service/ProductServiceCacheIT.java`
 - **Key details**:
-  - Cache key: `menu:v1:restaurant:{restaurantId}`, TTL 30 min
-  - Cache-aside: cache → miss → DynamoDB → populate → return
+  - Cache key: `product:v1:{productId}`, TTL 30 min
+  - Cache-aside: cache → miss → PostgreSQL → populate → return
   - On write (Step 3.3), explicitly delete cache key — do not rely solely on TTL
   - Cache-bypass query param `?nocache=true` (auth-gated for admins)
-  - Compress JSON in cache with snappy if > 5 KB
-  - Search v1: simple DynamoDB scan with filter; document plan to migrate to OpenSearch in Phase 5+
-- **Acceptance criteria**: First request hits DynamoDB; second request within 30 min hits cache (verified by metric `cache.hit`).
+  - Search v1: Spring Data JPA `LIKE` query on `name` and `description`; existing category filter already in place
+- **Acceptance criteria**: First request hits PostgreSQL; second request within 30 min hits cache (verified by metric `cache.hit`).
 - **Dependencies**: 3.1
 
-### Step 3.3: Restaurant-owner write endpoints + S3 image uploads
-- [ ] **Objective**: Restaurant owners can edit menus; image uploads go directly to S3 via pre-signed URLs.
+### Step 3.3: Admin write endpoints + S3 image uploads
+- [ ] **Objective**: Admin users can update products; product images upload directly to S3 via pre-signed URLs.
 - **Files to create**:
-  - `services/product-service/src/main/java/.../api/MenuAdminController.java`
-  - `services/product-service/src/main/java/.../service/MenuMutationService.java`
   - `services/product-service/src/main/java/.../service/ImageUploadService.java`
-  - `services/product-service/src/main/java/.../security/RestaurantOwnerAuthorizer.java`
-  - `services/product-service/src/test/java/.../api/MenuAdminControllerIT.java`
+  - `services/product-service/src/test/java/.../api/ProductControllerIT.java`
 - **Key details**:
-  - JWT must include `role=RESTAURANT_OWNER` AND `restaurantId` matching the resource
-  - `POST /v1/restaurants/{id}/menu/items` and `PATCH /v1/menu/items/{itemId}`
-  - On any mutation: write to DynamoDB, then `cache.delete(menuKey)` — order matters
-  - `POST /v1/menu/items/{itemId}/image-upload-url` returns pre-signed S3 PUT URL valid 5 min, max 5 MB
-  - Image keys are content-addressed: `menu/{restaurantId}/{itemId}/{sha256}.jpg`
-  - Lambda triggered on S3 PutObject resizes to standard variants (thumb, medium, full) and updates the menu item
-- **Acceptance criteria**: Update item price → first GET after update returns new price (cache invalidation works). Upload an image and access via CloudFront URL.
+  - JWT must include `role=ADMIN` (already enforced in existing `ProductController`)
+  - On any mutation: write to PostgreSQL via JPA, then `cache.delete(productKey)` — order matters
+  - `POST /v1/products/{id}/image-upload-url` returns pre-signed S3 PUT URL valid 5 min, max 5 MB
+  - Image keys are content-addressed: `products/{productId}/{sha256}.jpg`
+  - Lambda triggered on S3 PutObject resizes to standard variants (thumb, medium, full) and updates the `image_s3_key` column
+- **Acceptance criteria**: Update product price → first GET after update returns new price (cache invalidation works). Upload an image and access via CloudFront URL.
 - **Dependencies**: 3.2
 
-### Step 3.4: gRPC server for internal verification
-- [ ] **Objective**: Expose `MenuService.VerifyItem(restaurantId, itemId)` for Basket and Order services.
+### Step 3.4: gRPC server for internal price/availability verification
+- [ ] **Objective**: Expose `ProductService.VerifyProduct(productId)` for Basket and Order services to confirm item availability and current price before acting on it.
 - **Files to create**:
-  - `platform-shared-libs/common-events/src/main/proto/menu.proto`
-  - `services/product-service/src/main/java/.../grpc/MenuGrpcService.java`
-  - `services/product-service/src/test/java/.../grpc/MenuGrpcServiceTest.java`
+  - `platform-shared-libs/common-events/src/main/proto/product.proto`
+  - `services/product-service/src/main/java/.../grpc/ProductGrpcService.java`
+  - `services/product-service/src/test/java/.../grpc/ProductGrpcServiceTest.java`
 - **Key details**:
-  - Returns `ItemAvailability { exists, available_now, current_price, restaurant_paused }`
-  - `available_now` considers menu schedule (e.g., breakfast 06:00–11:00)
-  - `restaurant_paused` reflects state set by Kitchen Service via `RESTAURANT_PAUSED` event consumer
+  - Returns `ProductAvailability { exists, in_stock, current_price, stock }`
   - Cached in Redis with TTL 60s — verifies are slightly stale-tolerant; final price-locking happens at Order checkout
   - Resilience4j on the server side: rate limiter 1000 req/s per source pod
-- **Acceptance criteria**: gRPC client from a test calls `VerifyItem` and gets correct response in < 50ms p99.
+- **Acceptance criteria**: gRPC client from a test calls `VerifyProduct` and gets correct response in < 50ms p99.
 - **Dependencies**: 3.3
 
 ### Step 3.5: RESTAURANT_PAUSED listener + manifests + deployment
 - [ ] **Objective**: Subscribe to Kitchen events to hide overloaded restaurants. Deploy to staging.
 - **Files to create**:
   - `services/product-service/src/main/java/.../listener/RestaurantPausedListener.java`
-  - `services/product-service/src/main/java/.../domain/RestaurantStatus.java` (DDB item)
+  - `services/product-service/src/main/java/.../domain/RestaurantStatus.java` (JPA entity — PostgreSQL row tracking paused/resumed state)
   - `food-delivery-gitops/apps/product-service/base/...`
   - `food-delivery-gitops/apps/product-service/overlays/{staging,production}/...`
   - `food-delivery-gitops/argocd/applications/product-service-staging.yaml`
@@ -989,11 +964,16 @@ The build is split into **four versions**, each one shippable. The point of vers
   - `services/payment-service/src/main/resources/application.yml`
   - `services/payment-service/Dockerfile`
 - **Key details**:
-  - DynamoDB table from Step 0.5: `payment-ledger` PK = `payment_intent_id`, SK = `entry_seq`.
+  - `payment-ledger` table: PK=`payment_intent_id` (S), SK=`entry_seq` (N).
   - Entry types (v1 subset): `INITIATED`, `CAPTURED`, `FAILED`. (v4 adds `AUTHORIZED`, `REFUNDED`, `DISPUTED`.)
   - Append-only: never `UpdateItem`, only `PutItem` with conditional `attribute_not_exists`.
   - GSI on `idempotency_key` for the duplicate-charge check.
   - PII discipline: never log PAN; only `last4` and Stripe token references.
+- **Infrastructure** (deferred from Step 0.5 — provision here when the service is built):
+  - Create `platform-infra/modules/dynamodb-table/` (reusable module: `main.tf`, `variables.tf`, `outputs.tf`; KMS CMK per table, on-demand billing, optional streams/PITR/TTL/GSI via dynamic blocks) — first use of this module
+  - Create `platform-infra/envs/staging/dynamodb.tf` and `envs/production/dynamodb.tf`, then add:
+    - `payment-ledger`: PK=`payment_intent_id` (S), SK=`entry_seq` (N), PITR enabled, GSI on `idempotency_key` (S), KMS CMK
+    - `outbox-payment`: PK=`event_id` (S), streams enabled (`NEW_AND_OLD_IMAGES`), KMS CMK
 - **Acceptance criteria**: Insert ledger entries, list all entries for a payment intent, assert ordering.
 - **Dependencies**: 1.4
 
@@ -1389,7 +1369,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 - [ ] **Objective**: Close the cross-cutting testability gap identified in `docs/API_AUDIT.md` §12. Every HTTP-exposing service gets controller-slice tests, repository-slice tests, and at least one happy-path service-layer test. The Saga end-to-end integration test comes in Step 9.1.
 - **Files to create** (per service that has HTTP endpoints — user, order, product, basket, kitchen, delivery, review, promotion):
   - `services/{name}/src/test/java/.../api/{Resource}ControllerTest.java` — `@WebMvcTest` per controller; covers happy path + validation errors + 4xx responses; mocks the service layer
-  - `services/{name}/src/test/java/.../domain/{Resource}RepositoryTest.java` — `@DataJpaTest` for JPA services; DynamoDB Enhanced Client tests with LocalStack for product and kitchen and review
+  - `services/{name}/src/test/java/.../domain/{Resource}RepositoryTest.java` — `@DataJpaTest` for JPA services (user, product, order, delivery, promotion); DynamoDB Enhanced Client tests with LocalStack for kitchen and review
   - `services/{name}/src/test/java/.../service/{Resource}ServiceTest.java` — happy path of the main service class with Mockito for dependencies
   - `services/{name}/src/test/java/.../config/IntegrationTestBase.java` — shared Testcontainers setup (Postgres, Redis, Kafka per service needs) reused across IT tests
 - **Key details**:
@@ -1568,6 +1548,10 @@ The build is split into **four versions**, each one shippable. The point of vers
 - [ ] **Objective**: Spring Boot service backed by DynamoDB for tickets and capacity counters. Follow `docs/service-deploy-template.md` from v1 pilot.
 - **Files**: standard service skeleton per template. Tables: `tickets` (PK=`restaurantId`, SK=`ticketId`, GSI on `state`), `restaurant-capacity` (PK=`restaurantId`, attributes `active_count` atomic counter, `paused` boolean, `pause_threshold` default 20).
 - **Key details**: Ticket states `ACCEPTED`, `PREPARING`, `READY_FOR_PICKUP`, `CANCELED`. Outbox table on DDB (Streams-driven publisher via Lambda — first use of this pattern in v2; document it in the deploy template as a v2 addition).
+- **Infrastructure** (deferred from Step 0.5 — provision here when the service is built):
+  - Add to `platform-infra/envs/{env}/dynamodb.tf` using the `dynamodb-table` module from Step 3.1:
+    - `tickets`: PK=`ticket_id` (S), GSI on `restaurant_id` (S) → `created_at` (S), streams enabled, KMS CMK
+    - `outbox-kitchen`: PK=`event_id` (S), streams enabled (`NEW_AND_OLD_IMAGES`), KMS CMK
 - **Acceptance**: insert ticket, list by state, atomic counter increment work.
 - **Dependencies**: 1.4, 2.7
 
@@ -1657,6 +1641,10 @@ The build is split into **four versions**, each one shippable. The point of vers
 
 ### Step 15.1: review-service skeleton + DynamoDB schema
 - [ ] **Objective**: Spring Boot service. DDB tables: `reviews` (PK=`REVIEW#{type}#{entityId}`, SK=`{orderId}#{userId}`, GSI on `(userId, submittedAt)`), `review-aggregates` (PK=`REVIEW_AGG#{type}#{entityId}`, attrs: count, sum, avg, histogram, lastUpdated).
+- **Infrastructure** (deferred from Step 0.5 — provision here when the service is built):
+  - Add to `platform-infra/envs/{env}/dynamodb.tf` using the `dynamodb-table` module:
+    - `reviews`: PK=`review_id` (S), streams enabled (`NEW_AND_OLD_IMAGES`), KMS CMK
+    - `review-aggregates`: PK=`restaurant_id` (S), KMS CMK
 - **Dependencies**: 1.4, 2.7
 
 ### Step 15.2: ORDER_DELIVERED listener + REST CRUD endpoints
@@ -1702,6 +1690,8 @@ The build is split into **four versions**, each one shippable. The point of vers
 
 ### Step 17.3: Idempotency + send paths (SES email + SNS Mobile Push)
 - [ ] **Objective**: Conditional write to `notification-idempotency` DDB table with `attribute_not_exists(idem_key)`. SES `SendEmail` for email. SNS Mobile Push for FCM/APNS. EventRouter maps event types to (template, channel, recipient).
+- **Infrastructure** (deferred from Step 0.5 — provision here when the service is built):
+  - Add to `platform-infra/envs/{env}/dynamodb.tf`: `notification-idempotency` table: PK=`idempotency_key` (S), TTL attribute=`expires_at` (7-day expiry), KMS CMK
 - **Dependencies**: 17.2
 
 ### Step 17.4: CodePipeline for Lambda (SAM-based) + deploy

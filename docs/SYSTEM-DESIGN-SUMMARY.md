@@ -18,7 +18,7 @@
   │           │   EDGE TIER                  │
   │  ┌────────▼───┐  ┌──────────┐  ┌───────┐ │
   │  │    USER    │  │ PRODUCT  │  │BASKET │ │
-  │  │ Postgres   │  │ DynamoDB │  │ Redis │ │
+  │  │ Postgres   │  │ Postgres │  │ Redis │ │
   │  │ Redis      │  │ Redis    │  │ only  │ │
   │  └────────────┘  └──────────┘  └───────┘ │
   └──────────────────────────────────────────┘
@@ -70,9 +70,9 @@ Handles registration, login, and JWT token issuance. PostgreSQL is needed becaus
 
 ---
 
-### Product Service → DynamoDB + Redis + S3
+### Product Service → PostgreSQL + Redis + S3
 
-The "digital menu" for all restaurants. DynamoDB holds product data because a menu is a flexible, nested document (categories → items → modifiers), accessed almost always by `restaurantId` — a single-key lookup with no joins needed. Redis sits in front as a 30-minute cache because menus are read thousands of times for every one write. Product images live in S3 with CloudFront CDN. This service also exposes a **gRPC endpoint** so Basket Service can ask "is this item still available and what's the current price?" in real time before adding to cart.
+The product catalog — items a customer can add to their basket (name, description, price, category, stock level). Aurora PostgreSQL stores products with `@Version` optimistic locking for concurrent stock updates. Redis sits in front as a 30-minute cache because products are read far more often than they change. Product images live in S3 with CloudFront CDN. This service also exposes a **gRPC endpoint** so Basket Service can ask "is this item in stock and what's the current price?" in real time before adding to cart.
 
 ---
 
@@ -173,7 +173,7 @@ Every operation that changes state accepts an idempotency key (an order ID, a UU
 | Service | Database | Why |
 |---|---|---|
 | User | PostgreSQL + Redis | ACID for outbox; Redis for token/session cache |
-| Product | DynamoDB + Redis | Flexible menu schema; Redis cache for read-heavy load |
+| Product | PostgreSQL + Redis | Relational catalog with optimistic locking; Redis cache for read-heavy load |
 | Basket | Redis only | Carts are temporary; sub-ms reads; TTL handles expiry |
 | Order | PostgreSQL | Outbox pattern needs ACID; saga state needs transactions |
 | Payment | DynamoDB | Append-only ledger; single-key idempotency lookups |

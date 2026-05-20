@@ -303,7 +303,7 @@ flowchart TB
 
     subgraph Data["Data Tier"]
         Postgres[(Aurora PostgreSQL<br/>user, order, promo, delivery)]
-        DDB[(DynamoDB<br/>product, kitchen, payment, review)]
+        DDB[(DynamoDB<br/>kitchen, payment, review)]
         Redis[(ElastiCache Redis<br/>basket, cache, sessions)]
         S3[(S3<br/>images, receipts, templates)]
     end
@@ -472,11 +472,13 @@ Different services use different databases because their access patterns differ 
 
 PostgreSQL is the only realistic option for these patterns. DynamoDB would force application-layer joins and approximate atomicity via transactional writes (limited to 100 items, 25 in v1).
 
-**DynamoDB for**: product, kitchen, payment-ledger, review. These need:
-- Single-key access dominant (`GetItem(restaurantId)` returns the whole menu).
+**DynamoDB for**: kitchen, payment-ledger, review. These need:
+- Single-key access dominant (kitchen: `GetItem(restaurantId)` returns active tickets; payment: `GetItem(paymentIntentId)` returns ledger entries).
 - High write throughput with predictable latency (atomic counter for kitchen capacity).
 - Flexible schemas (review fields differ across restaurant/driver/meal).
 - On-demand billing for unpredictable workloads (lunch-rush spikes don't require capacity planning).
+
+**Product uses Aurora PostgreSQL** (same cluster as user, order, delivery, promotion) because: the access pattern includes full-text search and category filtering (not single-key lookups); `@Version` optimistic locking cleanly handles concurrent stock updates; the service was built with JPA/Hibernate and works correctly — no DynamoDB advantage justifies a rewrite.
 
 DynamoDB also gives us DDB Streams for outbox publishing (kitchen, payment v4), avoiding a separate publisher process.
 
