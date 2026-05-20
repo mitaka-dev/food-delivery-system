@@ -389,7 +389,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 0.2
 
 ### Step 0.7: Terraform — Amazon MSK (managed Kafka) cluster
-- [ ] **Objective**: Provision the MSK cluster that hosts v1's domain-event backbone (`user-events`, `order-events`, `payment-events`). v2/v3 will add more topics later.
+- [x] **Objective**: Provision the MSK cluster that hosts v1's domain-event backbone (`user-events`, `order-events`, `payment-events`). v2/v3 will add more topics later.
 - **Files to create**:
   - `platform-infra/modules/msk/main.tf`
   - `platform-infra/modules/msk/variables.tf`
