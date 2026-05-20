@@ -334,7 +334,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 0.1
 
 ### Step 0.3: Terraform — EKS cluster on Fargate
-- [ ] **Objective**: Provision EKS cluster with Fargate-only profiles, IRSA, and core add-ons.
+- [x] **Objective**: Provision EKS cluster with Fargate-only profiles, IRSA, and core add-ons.
 - **Files to create**:
   - `platform-infra/modules/eks/main.tf`
   - `platform-infra/modules/eks/fargate-profiles.tf`
