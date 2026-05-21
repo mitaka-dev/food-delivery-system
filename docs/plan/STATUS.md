@@ -1,121 +1,26 @@
 # Project Status
 
-**Last updated:** 2026-05-21
-
-## Current Situation
-
-Phase 0 infrastructure is complete. Phase 1 is underway — Steps 1.1 and 1.2 are done. `common-libs` now contains shared events, DTOs, and error envelope types used by all services.
+**Last updated:** 2026-05-22
 
 ## Where We Are
 
-- **Local system:** Complete. All services built and working, reorganised under `services/`.
-- **AWS build plan:** In progress — 12/97 steps complete (Steps 0.1–0.4, 0.6–0.11, 1.1–1.2).
-- **AWS account:** Dedicated account created; credentials configured. See `docs/aws-account-setup.md`.
-- **Environment:** Single env — `platform-infra/envs/production/` only. No staging env.
-- **Repo layout:** This repo IS `food-delivery-platform`. Services under `services/`. `food-delivery-gitops` at `../food-delivery-gitops/`.
-- **Active branch:** `build/phase-1`.
-- **API Hardening:** Gaps identified in `docs/API_AUDIT.md` — remediation integrated into the AWS build plan.
+- **Progress:** 13 / 97 steps complete
+- **Active branch:** `build/phase-1`
+- **Environment:** Single env — `platform-infra/envs/production/` only.
+- **Repo layout:** Services under `services/`. GitOps repo at `../food-delivery-gitops/`.
 
-## Completed Steps
+## Phase 0 — Complete
 
-### Step 0.1 (2026-05-20)
-- All 11 services moved under `services/`
-- Maven `relativePath` fixed in all service POMs
-- `docker-compose.yml` updated; observability image tags pinned
-- Added: `.tool-versions`, `.terraform-version`, `.envrc.template`, `scripts/bootstrap-dev.sh`, `docs/spring-profiles.md`, `docs/developer-setup.md`
-- `food-delivery-gitops` repo initialized at `../food-delivery-gitops/`
+All infrastructure provisioned: VPC, EKS Fargate, Aurora PostgreSQL Serverless v2, ElastiCache Redis, MSK Serverless, SNS/SQS queues, ECR repos, CodeArtifact, API Gateway + WAF, ArgoCD with Cognito SSO. See `BUILD-PLAN.md` Steps 0.1–0.11 for details.
 
-### Step 0.2 (2026-05-20)
-- VPC module at `platform-infra/modules/vpc/`
-- Production env: `platform-infra/envs/production/network.tf` — 2 AZs, single NAT GW, `10.0.0.0/16`
-- VPC endpoints: S3 + DynamoDB (gateway), ECR/API/DKR, Secrets Manager, SNS, SQS, STS, Logs (interface)
-- Flow logs → CloudWatch
+## Phase 1 — In Progress
 
-### Step 0.3 (2026-05-20)
-- EKS module at `platform-infra/modules/eks/`
-- EKS cluster on Fargate, 15 Fargate profiles (one per namespace), IRSA wired
-- Add-ons: vpc-cni, coredns, kube-proxy
-- IRSA roles pre-created: LBC, ExternalDNS, ExternalSecrets, VPC CNI
-
-### Step 0.4 (2026-05-20)
-- RDS Aurora module at `platform-infra/modules/rds-aurora/`
-- Aurora PostgreSQL Serverless v2 (0.5–4 ACU), single instance, isolated subnets
-- Master credentials in Secrets Manager with managed rotation
-
-### Step 0.5 — Deferred
-- DynamoDB tables deferred from Phase 0; provisioned alongside their service phases
-- `payment-ledger` / `outbox-payment` → Step 5.1; `tickets` / `outbox-kitchen` → Step 11.1; etc.
-- Reusable `platform-infra/modules/dynamodb-table/` module created in Step 5.1 when first needed
-
-### Step 0.6 (2026-05-21)
-- ElastiCache Redis module at `platform-infra/modules/elasticache-redis/`
-- Redis 7, cluster mode enabled, isolated subnets, TLS + IAM auth
-- `platform-infra/envs/production/cache.tf`
-
-### Step 0.7 (2026-05-21)
-- MSK module at `platform-infra/modules/msk/`
-- MSK Serverless, IAM auth + TLS, Glue Schema Registry wired
-- `platform-infra/envs/production/kafka.tf`
-
-### Step 0.8 (2026-05-21)
-- Reusable module at `platform-infra/modules/sns-sqs-pair/`
-- v1 queues: `charge-payment`, `basket-compensation` — each with DLQ (`maxReceiveCount=5`)
-- Platform-wide KMS CMK (`alias/food-delivery/sns-sqs`) with grants for SNS, SQS, and CloudWatch service principals
-- CloudWatch alarms on every DLQ depth > 0
-- `platform-infra/envs/production/messaging-sns-sqs.tf`
-
-### Step 0.9 (2026-05-21)
-- Reusable module at `platform-infra/modules/ecr-repo/` — IMMUTABLE tags, scan-on-push, KMS encryption, lifecycle policy
-- 5 v1 ECR repos (`user-service`, `product-service`, `basket-service`, `payment-service`, `order-service`)
-- New Terraform root `platform-infra/envs/shared/` for account-level resources
-- Shared KMS CMK (`alias/food-delivery/shared`) for ECR image + CodeArtifact package encryption
-- CodeBuild role: ECR push, CodeArtifact read/publish, S3 artifacts, MSK produce/consume, Secrets Manager
-- CodePipeline role: S3 artifacts, CodeBuild trigger, ECR describe
-- S3 artifact bucket `food-delivery-cicd-artifacts-{account_id}` with versioning + SSE-KMS
-- CodeArtifact domain `food-delivery-platform` with `internal` repo (upstream: `maven-central` proxy)
-
-### Step 0.10 (2026-05-21)
-- `platform-infra/modules/api-gateway/` — HTTP API (v2), VPC Link + SG, CloudWatch access logs, default stage with throttling, optional WAF association
-- WAF Web ACL: Common, KnownBadInputs, SQLi managed rule groups + rate limit 2000 req/5min per IP
-- Health Lambda (Node.js 20/arm64, inline) — GET /health, no auth
-- JWT authorizer Lambda — reads RSA public key from SSM, validates RS256 with `crypto.createVerify`, 5-min result cache
-- SSM placeholder `/food-delivery/jwt-public-key` with `ignore_changes = [value]`
-- ACM certificate + custom domain `api-production.food-delivery-platform.io` (PENDING_VALIDATION until DNS records added)
-- `platform-infra/envs/production/api.tf`
-
-### Step 0.11 (2026-05-21)
-- `platform-infra/envs/production/gitops.tf` — CodeCommit repo, IAM user `argocd-gitops-reader` with read-only policy, RSA SSH key pair (public in IAM, private in Secrets Manager), Cognito user pool + client for ArgoCD OIDC SSO, SSM params for OIDC issuer/client
-- `platform-infra/scripts/install-argocd.sh` — one-shot bootstrap: installs AWS LBC, ArgoCD (chart 7.4.4 / ArgoCD 2.10.x), Argo Rollouts; creates OIDC + SSH repo secrets; applies AppProject and root App-of-Apps Application
-- `food-delivery-gitops/argocd/install/values.yaml` — ArgoCD Helm values: internal ALB ingress, admin disabled, Cognito RBAC, Notifications controller enabled
-- `food-delivery-gitops/argocd/projects/services.yaml` — AppProject `services` scoped to service namespaces + CodeCommit source only
-- `food-delivery-gitops/argocd/applications/_app-of-apps.yaml` — root Application template watching `apps/` directory
-- `food-delivery-gitops/README.md` — updated with accurate bootstrap and usage instructions
-
-### Step 1.1 (2026-05-21)
-- Updated `pom.xml`: added `platform-bom` and `platform-shared-libs` modules; added `maven.compiler.release=25`
-- `platform-bom/pom.xml` — standalone BOM; pins Spring Boot, Spring Cloud AWS, AWS SDK v2, Resilience4j, Confluent Kafka Avro, OpenTelemetry, gRPC, Testcontainers, Flyway, jjwt, springdoc, loki4j
-- `platform-shared-libs/pom.xml` — empty reactor parent for shared lib modules (1.2–1.4)
-- `.mvn/maven.config` — `--no-transfer-progress` for CI
-- `.mvn/settings.xml` — CodeArtifact mirror template (env-var driven)
-- `scripts/codeartifact-login.sh` — fetches short-lived token and exports URL
-- `scripts/publish-bom.sh` — deploys platform-bom (and optionally shared libs) to CodeArtifact
-
-### Step 1.2 (2026-05-21)
-- Added `events/` package to `common-libs` — `EventEnvelope<T>`, `UserCreatedEvent`, `OrderPaidEvent`, `PaymentSuccessEvent`, `PaymentFailedEvent`, `FoodReadyEvent`, `OrderDeliveredEvent`
-- Added `dto/` package — `Money` (BigDecimal + ISO 4217 currency), `Address`, `PaginationCursor`
-- Added `api/` package — `ApiError` + `FieldError` (shared error envelope, null fieldErrors excluded)
-- Added `exceptions/` package — `PlatformException` abstract base
-- `ApiErrorSerializationTest` — 2 tests pass
-
-## Next Step
-
-**Step 1.3** — common-resilience module (Resilience4j + Idempotency).
+- **Done:** 1.1 (root reactor + platform-bom), 1.2 (events, DTOs, exceptions in `common-libs`), 1.3 (resilience package — Resilience4j + `@Idempotent`)
+- **Next:** 1.4 — observability + outbox packages in `common-libs`
 
 ## Key Files
 
-- `docs/plan/BUILD-PLAN.md` — phased build steps with `- [ ]` / `- [x]` checkboxes
-- `docs/plan/DEFERRED.md` — deferred items and known gaps (check before each new phase)
-- `docs/plan/ARCHITECTURE.md` — reference architecture (sections 1–10)
-- `docs/API_AUDIT.md` — outstanding API gaps from 2026-04-17 audit
-- `docs/spring-profiles.md` — two-profile convention (local / production)
-- `docs/developer-setup.md` — new developer onboarding guide
+- `docs/plan/BUILD-PLAN.md` — phased steps with `- [ ]` / `- [x]` checkboxes
+- `docs/plan/DEFERRED.md` — deferred items and known gaps
+- `docs/plan/ARCHITECTURE.md` — reference architecture
+- `docs/API_AUDIT.md` — outstanding API hardening gaps

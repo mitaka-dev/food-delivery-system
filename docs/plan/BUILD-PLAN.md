@@ -62,7 +62,7 @@ food-delivery-gitops          ← K8s manifests for ArgoCD to reconcile
 - Different access control: developers can merge service code freely, but production-manifest edits go through stricter review.
 - The "image tag bump" commit (post-CI artifact) belongs in its own history, not mixed with feature commits.
 
-**CI/CD doesn't get more complex.** Each service still has its own CodePipeline; pipelines use **path-filtered EventBridge triggers** so a push to `services/order-service/**` only triggers `order-pipeline`. A push to `platform-shared-libs/**` or `platform-bom/**` triggers all 10 service pipelines (rebuild everything that consumed the changed lib). One pipeline per service, just pointed at a single repo with a path filter — same fan-out as polyrepo.
+**CI/CD doesn't get more complex.** Each service still has its own CodePipeline; pipelines use **path-filtered EventBridge triggers** so a push to `services/order-service/**` only triggers `order-pipeline`. A push to `common-libs/**` or `platform-bom/**` triggers all 10 service pipelines (rebuild everything that consumed the changed lib). One pipeline per service, just pointed at a single repo with a path filter — same fan-out as polyrepo.
 
 The single-repo monorepo layout is documented in detail below in **Phase 0 Step 0.1** and **Phase 1**.
 
@@ -441,7 +441,7 @@ The build is split into **four versions**, each one shippable. The point of vers
   - Lifecycle policy: keep last 30 untagged images, keep tags `prod-*` forever
   - Image tag immutability enabled
   - **CodeArtifact domain**: `{org}-platform`. Two repos:
-    - `internal` — where `platform-bom` and `platform-shared-libs/*` modules publish.
+    - `internal` — where `platform-bom` and `common-libs` publish.
     - `maven-central` — public upstream proxy. The `internal` repo declares `maven-central` as upstream so transitive deps resolve through it.
   - CodeBuild service role with permissions for ECR push, CodeArtifact read+publish, S3 artifact bucket, **MSK produce/consume during integration tests**.
   - CodePipeline service role.
@@ -494,9 +494,8 @@ The build is split into **four versions**, each one shippable. The point of vers
 ### Step 1.1: Root reactor POM + platform-bom (Bill of Materials)
 - [x] **Objective**: Create the root `pom.xml` (Maven reactor for the entire monorepo), the `platform-bom` module that pins all dependency versions, and configure CodeArtifact publication. This is the foundation everything else inherits from.
 - **Files to create**:
-  - `food-delivery-platform/pom.xml` (root reactor — declares `<modules>` for `platform-bom`, `platform-shared-libs`, all services)
+  - `food-delivery-platform/pom.xml` (root reactor — declares `<modules>` for `platform-bom`, `common-libs`, all services)
   - `food-delivery-platform/platform-bom/pom.xml` (BOM with `<dependencyManagement>` only, no source code)
-  - `food-delivery-platform/platform-shared-libs/pom.xml` (parent for shared modules — empty `<modules>` for now, populated in 1.2–1.4)
   - `food-delivery-platform/.mvn/maven.config` (passes `-Pcoverage` etc. consistently)
   - `food-delivery-platform/.mvn/settings.xml` (template; CodeArtifact mirror config)
   - `food-delivery-platform/scripts/codeartifact-login.sh`
@@ -517,7 +516,7 @@ The build is split into **four versions**, each one shippable. The point of vers
   - **Group ID**: `com.{org}.platform` for the BOM and shared libs; `com.{org}.foodordering.{service}` for service modules.
   - **Versioning**: Platform-wide rolling version `1.0.0-SNAPSHOT` for development; releases tagged as `1.0.0`, `1.1.0`, etc. — bumped together.
   - **Publication**: `mvn deploy` from CI publishes the BOM and all shared libs to CodeArtifact `internal` repo. Service builds resolve them from there (services don't publish).
-  - **Reactor module list** in root POM: `platform-bom`, `platform-shared-libs/*`, `services/*`. The reactor is what makes `mvn -pl services/order-service -am verify` work — Maven knows the dependency graph and rebuilds upstream modules if needed.
+  - **Reactor module list** in root POM: `platform-bom`, `common-libs`, `services/*`. The reactor is what makes `mvn -pl services/order-service -am verify` work — Maven knows the dependency graph and rebuilds upstream modules if needed.
   - The `.mvn/settings.xml` template uses CodeArtifact as the mirror for everything, so CI builds never hit Maven Central directly.
 - **Acceptance criteria**: `mvn -B verify` from the monorepo root succeeds (modules empty but reactor resolves). `mvn -B deploy -pl platform-bom -DskipTests` publishes `platform-bom:1.0.0-SNAPSHOT` to CodeArtifact. A throwaway service POM in `services/test-service/` that imports the BOM resolves all listed dependencies without specifying versions.
 - **Dependencies**: 0.9
@@ -546,17 +545,16 @@ The build is split into **four versions**, each one shippable. The point of vers
   - `ApiError` shape: `{ status, error, code, message, timestamp, path, traceId, fieldErrors? }` — null `fieldErrors` excluded via `@JsonInclude(NON_NULL)`.
 - **Dependencies**: 1.1
 
-### Step 1.3: common-resilience module — Resilience4j + Idempotency
-- [ ] **Objective**: Centralize Resilience4j configurations and Spring auto-config that every service can apply with one annotation. **This is the module that `architecture.md` Section 4 references.**
+### Step 1.3: resilience package in common-libs — Resilience4j + Idempotency
+- [x] **Objective**: Centralize Resilience4j configurations and Spring auto-config that every service can apply with one annotation. **This is the package that `architecture.md` Section 4 references.**
 - **Files to create**:
-  - `platform-shared-libs/common-resilience/pom.xml`
-  - `platform-shared-libs/common-resilience/src/main/java/.../resilience/ResilienceAutoConfig.java`
-  - `platform-shared-libs/common-resilience/src/main/java/.../resilience/CircuitBreakerDefaults.java`
-  - `platform-shared-libs/common-resilience/src/main/java/.../resilience/RetryDefaults.java`
-  - `platform-shared-libs/common-resilience/src/main/java/.../resilience/TimeoutDefaults.java`
-  - `platform-shared-libs/common-resilience/src/main/java/.../resilience/IdempotencyKeyAspect.java`
-  - `platform-shared-libs/common-resilience/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`
-  - `platform-shared-libs/common-resilience/src/main/resources/application-resilience.yml` (default thresholds)
+  - `common-libs/src/main/java/.../resilience/ResilienceAutoConfig.java`
+  - `common-libs/src/main/java/.../resilience/CircuitBreakerDefaults.java`
+  - `common-libs/src/main/java/.../resilience/RetryDefaults.java`
+  - `common-libs/src/main/java/.../resilience/TimeoutDefaults.java`
+  - `common-libs/src/main/java/.../resilience/IdempotencyKeyAspect.java`
+  - `common-libs/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`
+  - `common-libs/src/main/resources/application-resilience.yml` (default thresholds)
 - **Key details**:
   - Default circuit breaker: sliding window 10, failure threshold 50%, wait 60s in open.
   - Default retry: 3 attempts, exponential backoff 100ms × 2, max 1s, jitter 0.5.
@@ -568,24 +566,22 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Acceptance criteria**: A test service that imports this module and adds `@CircuitBreaker(name = "test")` works without additional config. Inducing failures opens the circuit and emits the expected Micrometer metrics.
 - **Dependencies**: 1.1
 
-### Step 1.4: common-observability and common-outbox modules
+### Step 1.4: observability and outbox packages in common-libs
 - [ ] **Objective**: Provide structured JSON logging, OTel trace propagation, and the outbox publisher abstraction (Postgres + Kafka destination + SQS destination).
 - **Files to create**:
-  - `platform-shared-libs/common-observability/pom.xml`
-  - `platform-shared-libs/common-observability/src/main/java/.../obs/LoggingAutoConfig.java`
-  - `platform-shared-libs/common-observability/src/main/java/.../obs/TraceContextFilter.java`
-  - `platform-shared-libs/common-observability/src/main/java/.../obs/KafkaTracePropagator.java`
-  - `platform-shared-libs/common-observability/src/main/java/.../obs/SqsTracePropagator.java`
-  - `platform-shared-libs/common-observability/src/main/resources/logback-spring.xml`
-  - `platform-shared-libs/common-outbox/pom.xml`
-  - `platform-shared-libs/common-outbox/src/main/java/.../outbox/OutboxEvent.java` (entity)
-  - `platform-shared-libs/common-outbox/src/main/java/.../outbox/OutboxRepository.java` (interface)
-  - `platform-shared-libs/common-outbox/src/main/java/.../outbox/JdbcOutboxRepository.java`
-  - `platform-shared-libs/common-outbox/src/main/java/.../outbox/OutboxPublisher.java` (Spring `@Scheduled`)
-  - `platform-shared-libs/common-outbox/src/main/java/.../outbox/KafkaOutboxDispatcher.java`
-  - `platform-shared-libs/common-outbox/src/main/java/.../outbox/SqsOutboxDispatcher.java`
-  - `platform-shared-libs/common-outbox/src/main/java/.../outbox/OutboxRouter.java` (decides Kafka vs SQS based on row's `destination_type`)
-  - `platform-shared-libs/common-outbox/src/main/resources/db/migration/V1__outbox_table.sql`
+  - `common-libs/src/main/java/.../obs/LoggingAutoConfig.java`
+  - `common-libs/src/main/java/.../obs/TraceContextFilter.java`
+  - `common-libs/src/main/java/.../obs/KafkaTracePropagator.java`
+  - `common-libs/src/main/java/.../obs/SqsTracePropagator.java`
+  - `common-libs/src/main/resources/logback-spring.xml`
+  - `common-libs/src/main/java/.../outbox/OutboxEvent.java` (entity)
+  - `common-libs/src/main/java/.../outbox/OutboxRepository.java` (interface)
+  - `common-libs/src/main/java/.../outbox/JdbcOutboxRepository.java`
+  - `common-libs/src/main/java/.../outbox/OutboxPublisher.java` (Spring `@Scheduled`)
+  - `common-libs/src/main/java/.../outbox/KafkaOutboxDispatcher.java`
+  - `common-libs/src/main/java/.../outbox/SqsOutboxDispatcher.java`
+  - `common-libs/src/main/java/.../outbox/OutboxRouter.java` (decides Kafka vs SQS based on row's `destination_type`)
+  - `common-libs/src/main/resources/db/migration/V1__outbox_table.sql`
 - **Key details**:
   - Outbox row schema includes `destination_type` (`KAFKA` | `SQS`) and `destination` (topic name or queue ARN). The publisher reads, the router dispatches, the dispatcher publishes.
   - Structured JSON logs include `traceId`, `spanId`, `userId`, `service`, `version`, `level`, `logger`, `message`.
@@ -624,7 +620,7 @@ The build is split into **four versions**, each one shippable. The point of vers
   - `services/user-service/buildspec.yml`
   - `services/user-service/Dockerfile`
 - **Key details**:
-  - Depends on platform-shared-libs (common-dto, common-exceptions, common-resilience, common-observability, common-outbox, common-events)
+  - Depends on `common-libs`
   - Schema: `users(id UUID PK, email UNIQUE, password_hash, role, locale, created_at, updated_at)`, `refresh_tokens(id, user_id, token_hash, expires_at, revoked)`
   - Argon2id password hashing (Spring Security `Argon2PasswordEncoder`)
   - HikariCP pool: max 10 connections per pod
@@ -806,7 +802,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 ### Step 3.4: gRPC server for internal price/availability verification
 - [ ] **Objective**: Expose `ProductService.VerifyProduct(productId)` for Basket and Order services to confirm item availability and current price before acting on it.
 - **Files to create**:
-  - `platform-shared-libs/common-events/src/main/proto/product.proto`
+  - `common-libs/src/main/proto/product.proto`
   - `services/product-service/src/main/java/.../grpc/ProductGrpcService.java`
   - `services/product-service/src/test/java/.../grpc/ProductGrpcServiceTest.java`
 - **Key details**:
@@ -1187,9 +1183,9 @@ The build is split into **four versions**, each one shippable. The point of vers
 ### Step 7.3: AWS X-Ray distributed tracing across services
 - [ ] **Objective**: Trace context propagates through HTTP, gRPC, and SQS so a single trace shows the full saga.
 - **Files to create**:
-  - `platform-shared-libs/common-observability/src/main/java/.../obs/XRayConfig.java`
-  - `platform-shared-libs/common-observability/src/main/java/.../obs/SqsTracePropagator.java`
-  - `platform-shared-libs/common-observability/src/main/java/.../obs/GrpcTracingInterceptor.java`
+  - `common-libs/src/main/java/.../obs/XRayConfig.java`
+  - `common-libs/src/main/java/.../obs/SqsTracePropagator.java`
+  - `common-libs/src/main/java/.../obs/GrpcTracingInterceptor.java`
   - `food-delivery-gitops/apps/observability/otel-collector/...`
 - **Key details**:
   - OpenTelemetry Java agent attached to every service (via JVM `-javaagent:` flag in Dockerfile)
@@ -1239,7 +1235,7 @@ The build is split into **four versions**, each one shippable. The point of vers
   - **Path-filter Lambda** receives EventBridge `CodeCommit Repository State Change` events for `food-delivery-platform`. It uses `git diff --name-only` (via the CodeCommit GetDifferences API) between the previous and new commits to determine which top-level directories changed.
   - Routing logic the Lambda implements:
     - Touched `services/{name}/**` → start `pipeline-{name}`
-    - Touched `platform-shared-libs/**` or `platform-bom/**` → start ALL 10 service pipelines (parallel)
+    - Touched `common-libs/**` or `platform-bom/**` → start ALL 10 service pipelines (parallel)
     - Touched `platform-infra/**` → start `pipeline-platform-infra` (Terraform plan + apply with manual approval)
     - Touched `e2e-tests/**` → start `pipeline-e2e-tests`
   - The Lambda calls `codepipeline:StartPipelineExecution` on each affected pipeline.
@@ -1317,7 +1313,7 @@ The build is split into **four versions**, each one shippable. The point of vers
   - **Order Service** pipeline has an additional integration test stage running full saga simulation with **Testcontainers Kafka** + LocalStack.
   - All pipelines source from `food-delivery-platform` (monorepo); the path-filter Lambda determines which one(s) to start on a given commit.
   - **v2/v3/v4 services** get their pipelines added the same way when they ship — one short `.tf` file per new service. No new pipeline infrastructure work.
-- **Acceptance criteria**: All 5 v1 service pipelines visible in CodePipeline console. Pushing to `services/{any v1 service}/**` triggers the matching pipeline only. Pushing to `platform-shared-libs/**` triggers all 5.
+- **Acceptance criteria**: All 5 v1 service pipelines visible in CodePipeline console. Pushing to `services/{any v1 service}/**` triggers the matching pipeline only. Pushing to `common-libs/**` triggers all 5.
 - **Dependencies**: 8.4
 - **Dependencies**: 8.4
 
