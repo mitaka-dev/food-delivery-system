@@ -4,12 +4,12 @@
 
 ## Current Situation
 
-Phase 0 infrastructure is complete. Phase 1 has started — Step 1.1 (root reactor POM + platform-bom) is done. The Maven reactor now includes `platform-bom` (standalone BOM pinning all dependency versions) and `platform-shared-libs` (empty reactor, populated in 1.2–1.4). CodeArtifact login and publish scripts are in place.
+Phase 0 infrastructure is complete. Phase 1 is underway — Steps 1.1 and 1.2 are done. `common-libs` now contains shared events, DTOs, and error envelope types used by all services.
 
 ## Where We Are
 
 - **Local system:** Complete. All services built and working, reorganised under `services/`.
-- **AWS build plan:** In progress — 11/97 steps complete (Steps 0.1–0.4, 0.6–0.11, 1.1).
+- **AWS build plan:** In progress — 12/97 steps complete (Steps 0.1–0.4, 0.6–0.11, 1.1–1.2).
 - **AWS account:** Dedicated account created; credentials configured. See `docs/aws-account-setup.md`.
 - **Environment:** Single env — `platform-infra/envs/production/` only. No staging env.
 - **Repo layout:** This repo IS `food-delivery-platform`. Services under `services/`. `food-delivery-gitops` at `../food-delivery-gitops/`.
@@ -100,9 +100,16 @@ Phase 0 infrastructure is complete. Phase 1 has started — Step 1.1 (root react
 - `scripts/codeartifact-login.sh` — fetches short-lived token and exports URL
 - `scripts/publish-bom.sh` — deploys platform-bom (and optionally shared libs) to CodeArtifact
 
+### Step 1.2 (2026-05-21)
+- Added `events/` package to `common-libs` — `EventEnvelope<T>`, `UserCreatedEvent`, `OrderPaidEvent`, `PaymentSuccessEvent`, `PaymentFailedEvent`, `FoodReadyEvent`, `OrderDeliveredEvent`
+- Added `dto/` package — `Money` (BigDecimal + ISO 4217 currency), `Address`, `PaginationCursor`
+- Added `api/` package — `ApiError` + `FieldError` (shared error envelope, null fieldErrors excluded)
+- Added `exceptions/` package — `PlatformException` abstract base
+- `ApiErrorSerializationTest` — 2 tests pass
+
 ## Next Step
 
-**Step 1.2** — common-events, common-dto, and common-exceptions modules.
+**Step 1.3** — common-resilience module (Resilience4j + Idempotency).
 
 ## Key Files
 

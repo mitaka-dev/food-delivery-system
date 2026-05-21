@@ -522,37 +522,28 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Acceptance criteria**: `mvn -B verify` from the monorepo root succeeds (modules empty but reactor resolves). `mvn -B deploy -pl platform-bom -DskipTests` publishes `platform-bom:1.0.0-SNAPSHOT` to CodeArtifact. A throwaway service POM in `services/test-service/` that imports the BOM resolves all listed dependencies without specifying versions.
 - **Dependencies**: 0.9
 
-### Step 1.2: common-events, common-dto, and common-exceptions modules
-- [ ] **Objective**: Define shared event payload types, common DTOs with schema versioning, and the shared error envelope (`ApiError`) used by every service's exception handler. These are the wire contracts every service shares.
-- **Files to create**:
-  - `platform-shared-libs/common-events/pom.xml`
-  - `platform-shared-libs/common-events/src/main/java/.../events/UserCreatedEvent.java`
-  - `platform-shared-libs/common-events/src/main/java/.../events/OrderPaidEvent.java`
-  - `platform-shared-libs/common-events/src/main/java/.../events/PaymentSuccessEvent.java`
-  - `platform-shared-libs/common-events/src/main/java/.../events/PaymentFailedEvent.java`
-  - `platform-shared-libs/common-events/src/main/java/.../events/FoodReadyEvent.java`
-  - `platform-shared-libs/common-events/src/main/java/.../events/OrderDeliveredEvent.java`
-  - `platform-shared-libs/common-events/src/main/java/.../events/EventEnvelope.java` (wrapper with `eventId`, `traceId`, `occurredAt`, `schemaVersion`)
-  - `platform-shared-libs/common-events/src/main/avro/*.avsc` (Avro schemas, one per event, registered in Glue Schema Registry)
-  - `platform-shared-libs/common-events/src/main/proto/menu.proto`, `promotion.proto` (gRPC service contracts)
-  - `platform-shared-libs/common-dto/pom.xml`
-  - `platform-shared-libs/common-dto/src/main/java/.../dto/Money.java`
-  - `platform-shared-libs/common-dto/src/main/java/.../dto/Address.java`
-  - `platform-shared-libs/common-dto/src/main/java/.../dto/PaginationCursor.java`
-  - `platform-shared-libs/common-exceptions/pom.xml`
-  - `platform-shared-libs/common-exceptions/src/main/java/.../api/ApiError.java` (shared error envelope record)
-  - `platform-shared-libs/common-exceptions/src/main/java/.../api/FieldError.java` (per-field validation detail used by `ApiError`)
-  - `platform-shared-libs/common-exceptions/src/main/java/.../exceptions/PlatformException.java` (abstract base for typed exceptions)
-  - `platform-shared-libs/common-exceptions/src/test/java/.../api/ApiErrorSerializationTest.java`
+### Step 1.2: shared events, DTOs, and exceptions in common-libs
+- [x] **Objective**: Define shared event payload types, common DTOs, and the shared error envelope (`ApiError`) used by every service's exception handler. All added to `common-libs` as new packages — no separate sub-modules.
+- **Files created**:
+  - `common-libs/src/main/java/.../events/EventEnvelope.java`
+  - `common-libs/src/main/java/.../events/UserCreatedEvent.java`
+  - `common-libs/src/main/java/.../events/OrderPaidEvent.java`
+  - `common-libs/src/main/java/.../events/PaymentSuccessEvent.java`
+  - `common-libs/src/main/java/.../events/PaymentFailedEvent.java`
+  - `common-libs/src/main/java/.../events/FoodReadyEvent.java`
+  - `common-libs/src/main/java/.../events/OrderDeliveredEvent.java`
+  - `common-libs/src/main/java/.../dto/Money.java`
+  - `common-libs/src/main/java/.../dto/Address.java`
+  - `common-libs/src/main/java/.../dto/PaginationCursor.java`
+  - `common-libs/src/main/java/.../api/ApiError.java`
+  - `common-libs/src/main/java/.../api/FieldError.java`
+  - `common-libs/src/main/java/.../exceptions/PlatformException.java`
+  - `common-libs/src/test/java/.../api/ApiErrorSerializationTest.java`
 - **Key details**:
-  - All event types are **immutable Java records** with JSpecify `@NonNull`/`@Nullable` annotations (Spring Boot 4 + Java 25 idiom).
-  - Use Jackson `@JsonProperty` for stable wire format.
-  - Include `schemaVersion` field on every event (start at `1`).
-  - **Avro schema files** parallel the Java records — a generated `kafka-avro-serializer` will use them with Glue Schema Registry. Schemas are the source of truth for cross-language compatibility (in case a Python analytics consumer is added later).
-  - `Money` uses `BigDecimal` with explicit currency code (ISO 4217) — never `double`.
-  - DTOs are serialization contracts: any change is breaking, treat schema evolution carefully (Avro's compatibility rules: BACKWARD by default).
-  - **Audit-driven (cross-cutting recommendation #1)**: `ApiError` record shape: `{ status: int, error: String, code: String, message: String, timestamp: Instant, path: String, traceId: String, fieldErrors: List<FieldError>? }`. `FieldError` shape: `{ field: String, rejectedValue: Object, message: String }`. Replaces the private record currently in `product-service`'s exception handler. Required by user-service Step 2.6 and order-service Step 4.12.
-- **Acceptance criteria**: Records serialize/deserialize round-trip in unit tests. Avro schemas validate against the records via Avro→POJO mapping test. `ApiError` serializes to JSON with stable field names and excludes null `fieldErrors` by default.
+  - Immutable Java records with Jackson `@JsonProperty` for stable wire format.
+  - `schemaVersion` field on every event (starts at `1`).
+  - `Money` uses `BigDecimal` + ISO 4217 currency code, never `double`.
+  - `ApiError` shape: `{ status, error, code, message, timestamp, path, traceId, fieldErrors? }` — null `fieldErrors` excluded via `@JsonInclude(NON_NULL)`.
 - **Dependencies**: 1.1
 
 ### Step 1.3: common-resilience module — Resilience4j + Idempotency
