@@ -544,7 +544,7 @@ exit 0
 ### Example output
 ```
 ❌ Breaking proto changes detected:
-WARN: platform-shared-libs/common-events/src/main/proto/menu.proto:14:5:Field "1" with name "restaurant_id" on message "VerifyItemRequest" changed type from "string" to "int32".
+WARN: common-libs/src/main/proto/menu.proto:14:5:Field "1" with name "restaurant_id" on message "VerifyItemRequest" changed type from "string" to "int32".
 
 If this is intentional, bump the package version (e.g., v1 → v2) and update consumers.
 If accidental, add the field with a new field number instead of reusing one.
@@ -629,7 +629,7 @@ def main():
     return 1 if fail else 0
 
 def check_avsc_exists(event_type: str) -> bool:
-    avsc_dir = Path("platform-shared-libs/common-events/src/main/avro")
+    avsc_dir = Path("common-libs/common-events/src/main/avro")
     if not avsc_dir.exists():
         return False
     # Convention: lowercase with underscores becomes the .avsc filename
@@ -640,7 +640,7 @@ def check_avsc_exists(event_type: str) -> bool:
     return any(f.exists() for f in expected_files)
 
 def check_router_mapping(event_type: str) -> bool:
-    router_yml = Path("platform-shared-libs/common-outbox/src/main/resources/application-outbox.yml")
+    router_yml = Path("common-libs/src/main/resources/application-outbox.yml")
     if router_yml.exists() and event_type in router_yml.read_text():
         return True
     # Also check service-level outbox configs
@@ -1454,7 +1454,7 @@ When a `.proto` changes, generated Java stubs must be regenerated. Otherwise the
 Post-tool-use, after edits to any `.proto` file.
 
 ### What it does
-Runs `mvn -pl platform-shared-libs/common-events protobuf:compile generate-sources -q` to regenerate stubs. Stages any new generated files (since they live in `target/generated-sources/`, they're typically gitignored, but in some projects `src/main/generated/` is committed — adapt accordingly).
+Runs `mvn -pl common-libs/common-events protobuf:compile generate-sources -q` to regenerate stubs. Stages any new generated files (since they live in `target/generated-sources/`, they're typically gitignored, but in some projects `src/main/generated/` is committed — adapt accordingly).
 
 ### Implementation skeleton
 
@@ -1471,7 +1471,7 @@ if [[ "$TOOL" != "str_replace" && "$TOOL" != "create_file" ]]; then exit 0; fi
 if [[ ! "$PATH_" =~ \.proto$ ]]; then exit 0; fi
 
 echo "Regenerating gRPC stubs..." >&2
-mvn -q -pl platform-shared-libs/common-events protobuf:compile generate-sources >/dev/null 2>&1 || {
+mvn -q -pl common-libs/common-events protobuf:compile generate-sources >/dev/null 2>&1 || {
   echo "⚠ Stub regeneration failed; check buf/protoc errors" >&2
 }
 exit 0

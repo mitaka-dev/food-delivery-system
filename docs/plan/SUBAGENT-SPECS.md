@@ -159,7 +159,7 @@ Owns Phase 8's correctness. Designs state transitions, idempotency guards, compe
 ## Tools allowed
 
 - Full read/write access to `services/order-service/**`
-- Read-only access to `platform-shared-libs/common-events/**` and `platform-shared-libs/common-outbox/**`
+- Read-only access to `common-libs/common-events/**` and `common-libs/common-outbox/**`
 - bash for running `mvn -pl services/order-service verify`
 - web_fetch (for Spring StateMachine docs lookups via Context7)
 - NO access to other services or infrastructure (forced focus)
@@ -300,7 +300,7 @@ Produces consistent service skeletons for new services. The first step of each s
 ## Tools allowed
 
 - Full read/write access to `services/{name}/**` (only the new service's directory)
-- Read-only access to `platform-shared-libs/**`, `platform-bom/**`, `platform-infra/**`
+- Read-only access to `common-libs/**`, `platform-bom/**`, `platform-infra/**`
 - bash for `mvn` invocations and verifying the skeleton compiles
 - NO access to other services (forced isolation)
 
@@ -458,8 +458,8 @@ Owns Kafka topic design, partition key strategy, Avro schema registration, and S
 
 ## Tools allowed
 
-- Full read/write access to `platform-shared-libs/common-events/**` (Avro schemas, Java event records)
-- Full read/write access to `platform-shared-libs/common-outbox/**` (OutboxRouter config)
+- Full read/write access to `common-libs/common-events/**` (Avro schemas, Java event records)
+- Full read/write access to `common-libs/common-outbox/**` (OutboxRouter config)
 - Full read/write access to `platform-infra/envs/{env}/messaging.tf` and any MSK/SNS/SQS Terraform
 - Read-only access to all `services/**` (to understand consumers)
 - bash for running `aws glue check-schema-version-validity` and `terraform validate`
@@ -509,14 +509,14 @@ YOUR WORKFLOW FOR NEW EVENT TYPES
 Step 1: Determine destination (Kafka topic vs SQS queue) per the decision framework.
 
 Step 2: Write the Avro schema.
-- File: `platform-shared-libs/common-events/src/main/avro/{event_name}.avsc`
+- File: `common-libs/src/main/avro/{event_name}.avsc`
 - Naming: snake_case matching the event type (e.g., `order_paid.avsc`)
 - Required fields: per the Event Envelope (eventId, eventType, schemaVersion, occurredAt, traceId, aggregateType, aggregateId, producer, payload)
 - Document every field with `doc` attribute
 - Use logical types: `decimal` for money, `timestamp-millis` for instants
 
 Step 3: Update OutboxRouter mapping.
-- File: `platform-shared-libs/common-outbox/src/main/resources/application-outbox.yml`
+- File: `common-libs/src/main/resources/application-outbox.yml`
 - Map `eventType → destination + destination_name`
 
 Step 4: Verify schema compatibility.
@@ -533,7 +533,7 @@ Step 5: Update Terraform (if new topic).
 
 Step 6: Generate Java event record.
 - The avro-maven-plugin auto-generates from `.avsc` on next build
-- Verify the generated class is importable: `mvn -pl platform-shared-libs/common-events generate-sources`
+- Verify the generated class is importable: `mvn -pl common-libs/common-events generate-sources`
 
 Step 7: Document the event in `architecture.md` Section 8 if it's a new domain event.
 
@@ -622,7 +622,7 @@ Messaging Specialist:
 
 Build Lead → continues:
   - Applies the changes
-  - Verifies `mvn -pl platform-shared-libs/common-events verify`
+  - Verifies `mvn -pl common-libs/common-events verify`
   - Runs `terraform plan` (Infra Architect would normally review this)
 ```
 
@@ -1247,7 +1247,7 @@ Owns the security-sensitive parts of Phase 15 (production hardening). Triages pe
 
 ## Tools allowed
 
-- Read access to all source code (`services/**`, `platform-shared-libs/**`, `platform-infra/**`)
+- Read access to all source code (`services/**`, `common-libs/**`, `platform-infra/**`)
 - bash for security tools: `gitleaks`, `trivy`, `tfsec`, `checkov`, `aws iam`
 - web_fetch for CVE databases, OWASP, AWS security best practices
 

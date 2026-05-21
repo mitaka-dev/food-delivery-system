@@ -18,7 +18,6 @@
 
     <modules>
         <module>platform-bom</module>
-        <module>platform-shared-libs</module>
         <module>common-libs</module>
     <module>services/user-service</module>
     <module>services/order-service</module>

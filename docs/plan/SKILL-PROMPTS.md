@@ -574,7 +574,7 @@ CONTENT TO INCLUDE
    ├── pom.xml                                — root reactor POM (lists all modules)
    ├── platform-bom/
    │   └── pom.xml                            — BOM with dependencyManagement only
-   ├── platform-shared-libs/
+   ├── common-libs/
    │   ├── pom.xml                            — parent for shared modules
    │   ├── common-dto/
    │   ├── common-exceptions/
@@ -607,8 +607,8 @@ CONTENT TO INCLUDE
 
      <modules>
        <module>platform-bom</module>
-       <module>platform-shared-libs/common-dto</module>
-       <module>platform-shared-libs/common-exceptions</module>
+       <module>common-libs/common-dto</module>
+       <module>common-libs/common-exceptions</module>
        <!-- ... all shared lib modules ... -->
        <module>services/identity-service</module>
        <module>services/menu-service</module>
@@ -695,13 +695,13 @@ CONTENT TO INCLUDE
 5. **Reactor commands**:
    - Build everything: `mvn -B verify`
    - Build one service + its dependencies: `mvn -B -pl services/order-service -am verify`
-   - Build everything that depends on a shared lib: `mvn -B -pl platform-shared-libs/common-events -amd verify`
+   - Build everything that depends on a shared lib: `mvn -B -pl common-libs/common-events -amd verify`
    - Skip integration tests: `mvn -B verify -DskipITs`
    - Run only integration tests: `mvn -B verify -Dskip.unit.tests`
    - Build with native profile: `mvn -B verify -Pnative`
    - Selective from changed paths (CI uses this — see hook-specs):
      ```
-     CHANGED=$(git diff --name-only main... | grep -oP '(services|platform-shared-libs)/[^/]+' | sort -u)
+     CHANGED=$(git diff --name-only main... | grep -oP '(services|common-libs)/[^/]+' | sort -u)
      mvn -B verify -pl "$CHANGED" -am
      ```
 
@@ -896,7 +896,7 @@ CONTENT TO INCLUDE
 9. **Glue Schema Registry**:
    - Schema name format: `{topic-name}-value` (e.g., `order-events-value`)
    - Compatibility mode: `BACKWARD` (consumers can read older messages with newer schema)
-   - Schemas live in `platform-shared-libs/common-events/src/main/avro/{event-name}.avsc`
+   - Schemas live in `common-libs/src/main/avro/{event-name}.avsc`
    - Generated Java classes go to `target/generated-sources/` (use `avro-maven-plugin`)
    - Registry auth: IRSA on the producer/consumer pod
 
@@ -1896,7 +1896,7 @@ CONTENT TO INCLUDE
    - Spring Boot gRPC integration (yidongnan/grpc-spring-boot-starter or successor)
 
 2. **Where .proto files live**:
-   - `platform-shared-libs/common-events/src/main/proto/{service}.proto`
+   - `common-libs/src/main/proto/{service}.proto`
    - One file per service that exposes gRPC
    - Generated stubs available to all services via the BOM
 
@@ -2135,7 +2135,7 @@ CONTENT TO INCLUDE
 3. **Path-filter handling for monorepo**:
    - `SERVICE_PATH` env var passed in by CodePipeline source action
    - `mvn -pl $SERVICE_PATH -am` builds only that service + its deps
-   - If `platform-shared-libs/**` changed, build all services (handled by separate trigger logic)
+   - If `common-libs/**` changed, build all services (handled by separate trigger logic)
 
 4. **Buildspec variants** (one per pipeline stage):
    - `buildspec-build-test-scan.yml` — main build
@@ -3115,7 +3115,7 @@ CONTENT TO INCLUDE
 
 7. **Deprecation flow**:
    - Mark field deprecated in `.avsc` (`"doc": "DEPRECATED: removed in v2"`)
-   - Add to deprecation tracker: `platform-shared-libs/common-events/DEPRECATIONS.md`
+   - Add to deprecation tracker: `common-libs/common-events/DEPRECATIONS.md`
    - Wait at least 6 months
    - Verify no consumer is still reading
    - Bump schemaVersion + remove field
@@ -3244,7 +3244,7 @@ CONTENT TO INCLUDE
 
 3. **Scope vocabulary** (for our monorepo):
    - `{service-name}`: e.g., `order-service`, `payment-service`
-   - `shared-libs`: any change in `platform-shared-libs/`
+   - `shared-libs`: any change in `common-libs/`
    - `bom`: changes to `platform-bom/`
    - `infra`: `platform-infra/` (Terraform)
    - `gitops`: `food-delivery-gitops/`

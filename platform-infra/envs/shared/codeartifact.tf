@@ -20,7 +20,7 @@ resource "aws_codeartifact_repository" "maven_central" {
 }
 
 # ── internal repository ───────────────────────────────────────────────────────
-# Where platform-bom and platform-shared-libs/* publish.
+# Where platform-bom and common-libs publish.
 # Upstream chain: internal → maven-central → public Maven Central, so service
 # builds only need a single repository URL in settings.xml.
 
