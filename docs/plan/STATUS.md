@@ -102,6 +102,7 @@ The local development system is complete. Phase 0 infrastructure is complete —
 ## Key Files
 
 - `docs/plan/BUILD-PLAN.md` — phased build steps with `- [ ]` / `- [x]` checkboxes
+- `docs/plan/DEFERRED.md` — deferred items and known gaps (check before each new phase)
 - `docs/plan/ARCHITECTURE.md` — reference architecture (sections 1–10)
 - `docs/API_AUDIT.md` — outstanding API gaps from 2026-04-17 audit
 - `docs/spring-profiles.md` — two-profile convention (local / production)

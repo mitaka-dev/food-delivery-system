@@ -3,6 +3,8 @@
 > **Purpose**: A step-by-step build guide for Claude Code (Claude Pro) to construct a production-grade food ordering microservices platform on AWS. Each build step is sized to fit in a single Claude Pro session.
 >
 > **Companion document**: `architecture.md` contains the architectural reference (sections 1–10) — the *what* and *why* behind the choices below. Read it once before starting; re-consult it when a step references a specific section. This file (`build-plan.md`) is the *how* — the action plan you work through one step at a time.
+>
+> **Deferred items**: `DEFERRED.md` (same directory) tracks everything that was intentionally skipped, deferred, or found incomplete during phase reviews. Check it before starting each new phase and before declaring the platform production-ready.
 
 ---
 
