@@ -4,16 +4,16 @@
 
 ## Current Situation
 
-The local development system is complete. Phase 0 infrastructure is complete — all 10 planned steps done (0.5 deferred to Step 5.1). ArgoCD is bootstrapped on EKS with Cognito OIDC SSO, internal ALB ingress, the App-of-Apps pattern in place, and the CodeCommit gitops repo wired via SSH. Phase 1 (shared libraries and platform BOM) is next.
+Phase 0 infrastructure is complete. Phase 1 has started — Step 1.1 (root reactor POM + platform-bom) is done. The Maven reactor now includes `platform-bom` (standalone BOM pinning all dependency versions) and `platform-shared-libs` (empty reactor, populated in 1.2–1.4). CodeArtifact login and publish scripts are in place.
 
 ## Where We Are
 
 - **Local system:** Complete. All services built and working, reorganised under `services/`.
-- **AWS build plan:** In progress — 10/97 steps complete (Steps 0.1–0.4, 0.6–0.11).
+- **AWS build plan:** In progress — 11/97 steps complete (Steps 0.1–0.4, 0.6–0.11, 1.1).
 - **AWS account:** Dedicated account created; credentials configured. See `docs/aws-account-setup.md`.
 - **Environment:** Single env — `platform-infra/envs/production/` only. No staging env.
 - **Repo layout:** This repo IS `food-delivery-platform`. Services under `services/`. `food-delivery-gitops` at `../food-delivery-gitops/`.
-- **Active branch:** `build/phase-0` (pushed to `origin/build/phase-0`).
+- **Active branch:** `build/phase-1`.
 - **API Hardening:** Gaps identified in `docs/API_AUDIT.md` — remediation integrated into the AWS build plan.
 
 ## Completed Steps
@@ -91,13 +91,18 @@ The local development system is complete. Phase 0 infrastructure is complete —
 - `food-delivery-gitops/argocd/applications/_app-of-apps.yaml` — root Application template watching `apps/` directory
 - `food-delivery-gitops/README.md` — updated with accurate bootstrap and usage instructions
 
+### Step 1.1 (2026-05-21)
+- Updated `pom.xml`: added `platform-bom` and `platform-shared-libs` modules; added `maven.compiler.release=25`
+- `platform-bom/pom.xml` — standalone BOM; pins Spring Boot, Spring Cloud AWS, AWS SDK v2, Resilience4j, Confluent Kafka Avro, OpenTelemetry, gRPC, Testcontainers, Flyway, jjwt, springdoc, loki4j
+- `platform-shared-libs/pom.xml` — empty reactor parent for shared lib modules (1.2–1.4)
+- `.mvn/maven.config` — `--no-transfer-progress` for CI
+- `.mvn/settings.xml` — CodeArtifact mirror template (env-var driven)
+- `scripts/codeartifact-login.sh` — fetches short-lived token and exports URL
+- `scripts/publish-bom.sh` — deploys platform-bom (and optionally shared libs) to CodeArtifact
+
 ## Next Step
 
-**Step 1.1** — Root reactor POM + platform-bom (Bill of Materials).
-- `food-delivery-platform/pom.xml` (root Maven reactor)
-- `food-delivery-platform/platform-bom/pom.xml` (BOM pinning all dependency versions)
-- `food-delivery-platform/platform-shared-libs/pom.xml`
-- CodeArtifact publication scripts
+**Step 1.2** — common-events, common-dto, and common-exceptions modules.
 
 ## Key Files
 

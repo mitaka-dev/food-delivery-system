@@ -492,7 +492,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 > Goal: stand up the Maven reactor at the monorepo root, publish the platform BOM (which pins every dependency version platform-wide), and build out the shared libraries every service depends on. From here on, every service POM has *no version numbers* — they all come from the BOM.
 
 ### Step 1.1: Root reactor POM + platform-bom (Bill of Materials)
-- [ ] **Objective**: Create the root `pom.xml` (Maven reactor for the entire monorepo), the `platform-bom` module that pins all dependency versions, and configure CodeArtifact publication. This is the foundation everything else inherits from.
+- [x] **Objective**: Create the root `pom.xml` (Maven reactor for the entire monorepo), the `platform-bom` module that pins all dependency versions, and configure CodeArtifact publication. This is the foundation everything else inherits from.
 - **Files to create**:
   - `food-delivery-platform/pom.xml` (root reactor — declares `<modules>` for `platform-bom`, `platform-shared-libs`, all services)
   - `food-delivery-platform/platform-bom/pom.xml` (BOM with `<dependencyManagement>` only, no source code)

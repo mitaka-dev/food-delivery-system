@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>food.ordering.system</groupId>
+    <groupId>food.delivery.system</groupId>
     <artifactId>food-delivery-system-parent</artifactId>
     <version>1.0.0</version>
 
@@ -14,8 +14,12 @@
         <version>4.0.6</version> <relativePath/>
     </parent>
 
-    <packaging>pom</packaging> <modules>
-    <module>common-libs</module>
+    <packaging>pom</packaging>
+
+    <modules>
+        <module>platform-bom</module>
+        <module>platform-shared-libs</module>
+        <module>common-libs</module>
     <module>services/user-service</module>
     <module>services/order-service</module>
     <module>services/product-service</module>
@@ -37,12 +41,13 @@
         <jjwt.version>0.12.6</jjwt.version>
         <maven.compiler.source>25</maven.compiler.source>
         <maven.compiler.target>25</maven.compiler.target>
+        <maven.compiler.release>25</maven.compiler.release>
     </properties>
 
     <dependencyManagement>
         <dependencies>
             <dependency>
-                <groupId>food.ordering.system</groupId>
+                <groupId>food.delivery.system</groupId>
                 <artifactId>common-libs</artifactId>
                 <version>${common.libs.version}</version>
                 <scope>compile</scope>

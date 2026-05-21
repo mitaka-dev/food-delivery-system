@@ -69,7 +69,7 @@ food-delivery-system-parent (root pom.xml)
 Spring Boot BOM already manages: Spring Data, Spring Security, Spring Kafka, Micrometer, Jackson, Hibernate, PostgreSQL driver, Flyway (core), Redis client, etc.
 
 **Explicitly managed in this project's root POM:**
-- `food.ordering.system:common-libs` → `${common.libs.version}`
+- `food.delivery.system:common-libs` → `${common.libs.version}`
 - `org.springdoc:springdoc-openapi-starter-webmvc-ui` → `${springdoc.version}`
 - `com.github.loki4j:loki-logback-appender` → `${loki4j.version}`
 - `software.amazon.awssdk:bom` → `2.29.0` (imported as BOM)
@@ -79,7 +79,7 @@ Spring Boot BOM already manages: Spring Data, Spring Security, Spring Kafka, Mic
 1. Create `{service-name}/pom.xml` with parent reference and NO version in `<project>`:
 ```xml
 <parent>
-    <groupId>food.ordering.system</groupId>
+    <groupId>food.delivery.system</groupId>
     <artifactId>food-delivery-system-parent</artifactId>
     <version>1.0.0</version>
     <relativePath>../pom.xml</relativePath>

@@ -10,7 +10,7 @@ This project runs **Java 25 + Spring Boot 4.0.6 + Spring Framework 7 + Servlet 6
 
 ## Package Layout
 
-Every service follows this structure under `food.ordering.system.{service}.service`:
+Every service follows this structure under `food.delivery.system.{service}.service`:
 
 ```
 {service}-service/src/main/java/food/ordering/system/{service}/service/

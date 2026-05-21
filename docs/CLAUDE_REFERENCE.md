@@ -177,7 +177,7 @@ Never stages: `.env`, `*.secret`, `*.key`, credential files.
 **Allowed tools:** `Read`, `Edit`, `Write`, `Bash(./mvnw *)`
 
 Encodes how every Spring Boot service in this monorepo is structured:
-- Package layout under `food.ordering.system.{service}.service/`
+- Package layout under `food.delivery.system.{service}.service/`
 - Controller conventions (`/api/v1/` prefix, records for DTOs, `ResponseEntity<T>`, `@Valid`)
 - Service layer (`@Transactional`, constructor injection)
 - Entity patterns (no Lombok `@Data`, `@Version` for optimistic locking)
