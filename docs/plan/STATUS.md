@@ -4,12 +4,12 @@
 
 ## Current Situation
 
-The local development system is complete. Phase 0 infrastructure is in progress — 9 of 11 planned steps done. The core AWS primitives are live: VPC, EKS (Fargate), Aurora PostgreSQL, ElastiCache Redis, MSK Serverless Kafka, SNS/SQS compensation queues, ECR repos, CI/CD IAM roles, CodeArtifact, and API Gateway. Step 0.11 (ArgoCD) is next.
+The local development system is complete. Phase 0 infrastructure is complete — all 10 planned steps done (0.5 deferred to Step 5.1). ArgoCD is bootstrapped on EKS with Cognito OIDC SSO, internal ALB ingress, the App-of-Apps pattern in place, and the CodeCommit gitops repo wired via SSH. Phase 1 (shared libraries and platform BOM) is next.
 
 ## Where We Are
 
 - **Local system:** Complete. All services built and working, reorganised under `services/`.
-- **AWS build plan:** In progress — 9/97 steps complete (Steps 0.1–0.4, 0.6, 0.7, 0.8, 0.9, 0.10).
+- **AWS build plan:** In progress — 10/97 steps complete (Steps 0.1–0.4, 0.6–0.11).
 - **AWS account:** Dedicated account created; credentials configured. See `docs/aws-account-setup.md`.
 - **Environment:** Single env — `platform-infra/envs/production/` only. No staging env.
 - **Repo layout:** This repo IS `food-delivery-platform`. Services under `services/`. `food-delivery-gitops` at `../food-delivery-gitops/`.
@@ -83,13 +83,21 @@ The local development system is complete. Phase 0 infrastructure is in progress 
 - ACM certificate + custom domain `api-production.food-delivery-platform.io` (PENDING_VALIDATION until DNS records added)
 - `platform-infra/envs/production/api.tf`
 
+### Step 0.11 (2026-05-21)
+- `platform-infra/envs/production/gitops.tf` — CodeCommit repo, IAM user `argocd-gitops-reader` with read-only policy, RSA SSH key pair (public in IAM, private in Secrets Manager), Cognito user pool + client for ArgoCD OIDC SSO, SSM params for OIDC issuer/client
+- `platform-infra/scripts/install-argocd.sh` — one-shot bootstrap: installs AWS LBC, ArgoCD (chart 7.4.4 / ArgoCD 2.10.x), Argo Rollouts; creates OIDC + SSH repo secrets; applies AppProject and root App-of-Apps Application
+- `food-delivery-gitops/argocd/install/values.yaml` — ArgoCD Helm values: internal ALB ingress, admin disabled, Cognito RBAC, Notifications controller enabled
+- `food-delivery-gitops/argocd/projects/services.yaml` — AppProject `services` scoped to service namespaces + CodeCommit source only
+- `food-delivery-gitops/argocd/applications/_app-of-apps.yaml` — root Application template watching `apps/` directory
+- `food-delivery-gitops/README.md` — updated with accurate bootstrap and usage instructions
+
 ## Next Step
 
-**Step 0.11** — ArgoCD installation and bootstrap.
-- `platform-infra/scripts/install-argocd.sh`
-- `food-delivery-gitops/argocd/install/values.yaml`
-- `food-delivery-gitops/argocd/projects/services.yaml`
-- `food-delivery-gitops/argocd/applications/_app-of-apps.yaml`
+**Step 1.1** — Root reactor POM + platform-bom (Bill of Materials).
+- `food-delivery-platform/pom.xml` (root Maven reactor)
+- `food-delivery-platform/platform-bom/pom.xml` (BOM pinning all dependency versions)
+- `food-delivery-platform/platform-shared-libs/pom.xml`
+- CodeArtifact publication scripts
 
 ## Key Files
 

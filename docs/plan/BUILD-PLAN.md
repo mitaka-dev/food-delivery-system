@@ -464,7 +464,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 0.2
 
 ### Step 0.11: ArgoCD installation and bootstrap
-- [ ] **Objective**: Install ArgoCD on the EKS cluster and wire it to the `food-delivery-gitops` CodeCommit repo.
+- [x] **Objective**: Install ArgoCD on the EKS cluster and wire it to the `food-delivery-gitops` CodeCommit repo.
 - **Files to create**:
   - `platform-infra/scripts/install-argocd.sh`
   - `food-delivery-gitops/argocd/install/values.yaml`
