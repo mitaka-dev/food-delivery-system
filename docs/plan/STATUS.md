@@ -4,12 +4,12 @@
 
 ## Current Situation
 
-The local development system is complete. Phase 0 infrastructure is in progress — 6 of 7 planned steps done. The core AWS primitives are live: VPC, EKS (Fargate), Aurora PostgreSQL, ElastiCache Redis, and MSK Serverless Kafka. Step 0.8 (SNS/SQS queues for saga compensation) is next.
+The local development system is complete. Phase 0 infrastructure is in progress — 9 of 11 planned steps done. The core AWS primitives are live: VPC, EKS (Fargate), Aurora PostgreSQL, ElastiCache Redis, MSK Serverless Kafka, SNS/SQS compensation queues, ECR repos, CI/CD IAM roles, CodeArtifact, and API Gateway. Step 0.11 (ArgoCD) is next.
 
 ## Where We Are
 
 - **Local system:** Complete. All services built and working, reorganised under `services/`.
-- **AWS build plan:** In progress — 6/97 steps complete (Steps 0.1–0.4, 0.6, 0.7).
+- **AWS build plan:** In progress — 9/97 steps complete (Steps 0.1–0.4, 0.6, 0.7, 0.8, 0.9, 0.10).
 - **AWS account:** Dedicated account created; credentials configured. See `docs/aws-account-setup.md`.
 - **Environment:** Single env — `platform-infra/envs/production/` only. No staging env.
 - **Repo layout:** This repo IS `food-delivery-platform`. Services under `services/`. `food-delivery-gitops` at `../food-delivery-gitops/`.
@@ -57,13 +57,39 @@ The local development system is complete. Phase 0 infrastructure is in progress 
 - MSK Serverless, IAM auth + TLS, Glue Schema Registry wired
 - `platform-infra/envs/production/kafka.tf`
 
+### Step 0.8 (2026-05-21)
+- Reusable module at `platform-infra/modules/sns-sqs-pair/`
+- v1 queues: `charge-payment`, `basket-compensation` — each with DLQ (`maxReceiveCount=5`)
+- Platform-wide KMS CMK (`alias/food-delivery/sns-sqs`) with grants for SNS, SQS, and CloudWatch service principals
+- CloudWatch alarms on every DLQ depth > 0
+- `platform-infra/envs/production/messaging-sns-sqs.tf`
+
+### Step 0.9 (2026-05-21)
+- Reusable module at `platform-infra/modules/ecr-repo/` — IMMUTABLE tags, scan-on-push, KMS encryption, lifecycle policy
+- 5 v1 ECR repos (`user-service`, `product-service`, `basket-service`, `payment-service`, `order-service`)
+- New Terraform root `platform-infra/envs/shared/` for account-level resources
+- Shared KMS CMK (`alias/food-delivery/shared`) for ECR image + CodeArtifact package encryption
+- CodeBuild role: ECR push, CodeArtifact read/publish, S3 artifacts, MSK produce/consume, Secrets Manager
+- CodePipeline role: S3 artifacts, CodeBuild trigger, ECR describe
+- S3 artifact bucket `food-delivery-cicd-artifacts-{account_id}` with versioning + SSE-KMS
+- CodeArtifact domain `food-delivery-platform` with `internal` repo (upstream: `maven-central` proxy)
+
+### Step 0.10 (2026-05-21)
+- `platform-infra/modules/api-gateway/` — HTTP API (v2), VPC Link + SG, CloudWatch access logs, default stage with throttling, optional WAF association
+- WAF Web ACL: Common, KnownBadInputs, SQLi managed rule groups + rate limit 2000 req/5min per IP
+- Health Lambda (Node.js 20/arm64, inline) — GET /health, no auth
+- JWT authorizer Lambda — reads RSA public key from SSM, validates RS256 with `crypto.createVerify`, 5-min result cache
+- SSM placeholder `/food-delivery/jwt-public-key` with `ignore_changes = [value]`
+- ACM certificate + custom domain `api-production.food-delivery-platform.io` (PENDING_VALIDATION until DNS records added)
+- `platform-infra/envs/production/api.tf`
+
 ## Next Step
 
-**Step 0.8** — Terraform: SNS topics, SQS queues, DLQs (compensation + webhook intake).
-- `platform-infra/modules/sns-sqs-pair/` — reusable module (SNS topic + SQS queue + subscription + DLQ)
-- `platform-infra/envs/production/messaging-sns-sqs.tf`
-- v1 queues: `charge-payment`, `basket-compensation` — each with DLQ (`maxReceiveCount=5`)
-- All messages KMS-encrypted; CloudWatch alarms on every DLQ depth > 0
+**Step 0.11** — ArgoCD installation and bootstrap.
+- `platform-infra/scripts/install-argocd.sh`
+- `food-delivery-gitops/argocd/install/values.yaml`
+- `food-delivery-gitops/argocd/projects/services.yaml`
+- `food-delivery-gitops/argocd/applications/_app-of-apps.yaml`
 
 ## Key Files
 

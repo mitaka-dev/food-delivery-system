@@ -26,9 +26,9 @@ Workflow:
    coverage, migrations apply). For manual ones, ask the user to confirm.
 6. When all criteria pass:
    - Flip `- [ ]` to `- [x]` for this step in `BUILD-PLAN.md`.
-   - Propose a Conventional Commits message:
-     `{type}({scope}): step X.Y - {brief description}`
-   - Don't run the commit yourself — let the user review and run it.
+   - Update `docs/plan/STATUS.md`: increment the step count, move this step
+     into the Completed Steps section, and update the Next Step block to
+     reflect the next unchecked step.
 
 If $ARGUMENTS doesn't match a step ID in `BUILD-PLAN.md` (e.g. a
 free-form feature request), stop and suggest `/feature-dev` instead.

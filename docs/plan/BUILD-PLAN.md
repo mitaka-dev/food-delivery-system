@@ -411,7 +411,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 0.2, 0.3
 
 ### Step 0.8: Terraform — SNS topics, SQS queues, DLQs (compensation + webhook intake)
-- [ ] **Objective**: Provision the SNS/SQS messaging used for compensation commands, Stripe webhook intake, and the few simple fan-out cases that don't justify a Kafka topic.
+- [x] **Objective**: Provision the SNS/SQS messaging used for compensation commands, Stripe webhook intake, and the few simple fan-out cases that don't justify a Kafka topic.
 - **Files to create**:
   - `platform-infra/modules/sns-sqs-pair/main.tf` (creates topic + queue + subscription + DLQ)
   - `platform-infra/envs/production/messaging-sns-sqs.tf`
@@ -427,7 +427,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 0.2
 
 ### Step 0.9: Terraform — ECR repositories, IAM roles, CodeArtifact domain
-- [ ] **Objective**: Create one ECR repo per v1 service plus the shared IAM roles for CodeBuild and CI processes, plus the CodeArtifact domain that hosts the BOM and shared libraries.
+- [x] **Objective**: Create one ECR repo per v1 service plus the shared IAM roles for CodeBuild and CI processes, plus the CodeArtifact domain that hosts the BOM and shared libraries.
 - **Files to create**:
   - `platform-infra/modules/ecr-repo/main.tf`
   - `platform-infra/envs/shared/ecr.tf`
@@ -448,7 +448,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 0.1
 
 ### Step 0.10: Terraform — API Gateway and ALB foundation
-- [ ] **Objective**: Provision the public API Gateway plus internal ALBs for service ingress.
+- [x] **Objective**: Provision the public API Gateway plus internal ALBs for service ingress.
 - **Files to create**:
   - `platform-infra/modules/api-gateway/main.tf`
   - `platform-infra/envs/production/api.tf`
