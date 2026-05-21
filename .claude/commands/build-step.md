@@ -15,6 +15,8 @@ Workflow:
 
 1. Read the step from `docs/plan/BUILD-PLAN.md`: objective, tasks,
    acceptance criteria, dependencies and everything else for this step.
+   If the step's checkbox is already `- [x]`, stop immediately — tell the
+   user it's done and show the next unchecked step instead.
 2. Briefly restate the objective in your own words and list the
    skills/conventions that apply (e.g., `spring-boot-service-conventions`,
    `saga-state-machine`, whichever match the file paths and topic).

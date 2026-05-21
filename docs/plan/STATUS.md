@@ -1,15 +1,15 @@
 # Project Status
 
-**Last updated:** 2026-05-20
+**Last updated:** 2026-05-21
 
 ## Current Situation
 
-The local development system is complete. Steps 0.1–0.4 of the AWS build plan are done — the monorepo is organised, VPC is provisioned, EKS cluster is running, and Aurora PostgreSQL cluster is live. The plan has been simplified to a **single environment** (`production` only — no staging). Step 0.6 (ElastiCache Redis) is next.
+The local development system is complete. Phase 0 infrastructure is in progress — 6 of 7 planned steps done. The core AWS primitives are live: VPC, EKS (Fargate), Aurora PostgreSQL, ElastiCache Redis, and MSK Serverless Kafka. Step 0.8 (SNS/SQS queues for saga compensation) is next.
 
 ## Where We Are
 
 - **Local system:** Complete. All services built and working, reorganised under `services/`.
-- **AWS build plan:** In progress — 4/97 steps complete (Steps 0.1–0.4).
+- **AWS build plan:** In progress — 6/97 steps complete (Steps 0.1–0.4, 0.6, 0.7).
 - **AWS account:** Dedicated account created; credentials configured. See `docs/aws-account-setup.md`.
 - **Environment:** Single env — `platform-infra/envs/production/` only. No staging env.
 - **Repo layout:** This repo IS `food-delivery-platform`. Services under `services/`. `food-delivery-gitops` at `../food-delivery-gitops/`.
@@ -42,9 +42,28 @@ The local development system is complete. Steps 0.1–0.4 of the AWS build plan 
 - Aurora PostgreSQL Serverless v2 (0.5–4 ACU), single instance, isolated subnets
 - Master credentials in Secrets Manager with managed rotation
 
+### Step 0.5 — Deferred
+- DynamoDB tables deferred from Phase 0; provisioned alongside their service phases
+- `payment-ledger` / `outbox-payment` → Step 5.1; `tickets` / `outbox-kitchen` → Step 11.1; etc.
+- Reusable `platform-infra/modules/dynamodb-table/` module created in Step 5.1 when first needed
+
+### Step 0.6 (2026-05-21)
+- ElastiCache Redis module at `platform-infra/modules/elasticache-redis/`
+- Redis 7, cluster mode enabled, isolated subnets, TLS + IAM auth
+- `platform-infra/envs/production/cache.tf`
+
+### Step 0.7 (2026-05-21)
+- MSK module at `platform-infra/modules/msk/`
+- MSK Serverless, IAM auth + TLS, Glue Schema Registry wired
+- `platform-infra/envs/production/kafka.tf`
+
 ## Next Step
 
-**Step 0.6** — Terraform: ElastiCache Redis cluster (`platform-infra/modules/elasticache-redis/`, `platform-infra/envs/production/cache.tf`).
+**Step 0.8** — Terraform: SNS topics, SQS queues, DLQs (compensation + webhook intake).
+- `platform-infra/modules/sns-sqs-pair/` — reusable module (SNS topic + SQS queue + subscription + DLQ)
+- `platform-infra/envs/production/messaging-sns-sqs.tf`
+- v1 queues: `charge-payment`, `basket-compensation` — each with DLQ (`maxReceiveCount=5`)
+- All messages KMS-encrypted; CloudWatch alarms on every DLQ depth > 0
 
 ## Key Files
 
