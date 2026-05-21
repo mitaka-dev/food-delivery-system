@@ -895,8 +895,7 @@ Services consume libraries via the BOM, never by direct version reference. Bumpi
 src/main/resources/
 ├── application.yml              # base config, all profiles
 ├── application-local.yml        # local dev (docker-compose)
-├── application-staging.yml      # staging
-├── application-production.yml   # production
+├── application-production.yml   # production (real AWS)
 ├── application-test.yml         # automated tests (Testcontainers)
 └── application-resilience.yml   # imported from common-resilience
 ```

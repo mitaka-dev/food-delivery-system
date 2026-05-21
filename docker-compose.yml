@@ -64,7 +64,7 @@ services:
 
   # --- OBSERVABILITY ---
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.1.0
     container_name: prometheus
     ports: ["9090:9090"]
     volumes:
@@ -74,7 +74,7 @@ services:
       - '--storage.tsdb.path=/prometheus'
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.4.0
     container_name: grafana
     ports: ["3000:3000"]
     volumes:
@@ -82,12 +82,12 @@ services:
     depends_on: [loki, tempo, prometheus]
 
   loki:
-    image: grafana/loki:latest
+    image: grafana/loki:3.3.2
     container_name: loki
     ports: ["3100:3100"]
 
   tempo:
-    image: grafana/tempo:latest
+    image: grafana/tempo:2.6.1
     container_name: tempo
     command: [ "-config.file=/etc/tempo.yaml" ]
     volumes: ["./tempo-config.yaml:/etc/tempo.yaml"]
@@ -97,9 +97,9 @@ services:
   user-service:
     build:
       context: .
-      dockerfile: user-service/Dockerfile
+      dockerfile: services/user-service/Dockerfile
       args:
-        SERVICE_PATH: user-service
+        SERVICE_PATH: services/user-service
     container_name: user-service
     ports: ["8081:8081"]
     environment:
@@ -119,9 +119,9 @@ services:
   analytics-service:
     build:
       context: .
-      dockerfile: analytics-service/Dockerfile
+      dockerfile: services/analytics-service/Dockerfile
       args:
-        SERVICE_PATH: analytics-service
+        SERVICE_PATH: services/analytics-service
     container_name: analytics-service
     ports: ["8082:8082"]
     environment:
@@ -136,9 +136,9 @@ services:
   order-service:
     build:
       context: .
-      dockerfile: order-service/Dockerfile
+      dockerfile: services/order-service/Dockerfile
       args:
-        SERVICE_PATH: order-service
+        SERVICE_PATH: services/order-service
     container_name: order-service
     ports: ["8083:8083"]
     environment:
@@ -153,9 +153,9 @@ services:
   product-service:
     build:
       context: .
-      dockerfile: product-service/Dockerfile
+      dockerfile: services/product-service/Dockerfile
       args:
-        SERVICE_PATH: product-service
+        SERVICE_PATH: services/product-service
     container_name: product-service
     ports: ["8085:8085"]
     environment:
@@ -170,9 +170,9 @@ services:
   payment-service:
     build:
       context: .
-      dockerfile: payment-service/Dockerfile
+      dockerfile: services/payment-service/Dockerfile
       args:
-        SERVICE_PATH: payment-service
+        SERVICE_PATH: services/payment-service
     container_name: payment-service
     ports: ["8084:8084"]
     environment:
@@ -188,9 +188,9 @@ services:
 #  promotion-service:
 #    build:
 #      context: .
-#      dockerfile: promotion-service/Dockerfile
+#      dockerfile: services/promotion-service/Dockerfile
 #      args:
-#        SERVICE_PATH: promotion-service
+#        SERVICE_PATH: services/promotion-service
 #    container_name: promotion-service
 #    ports: ["8090:8090"]
 #    environment:
@@ -205,9 +205,9 @@ services:
 #  review-service:
 #    build:
 #      context: .
-#      dockerfile: review-service/Dockerfile
+#      dockerfile: services/review-service/Dockerfile
 #      args:
-#        SERVICE_PATH: review-service
+#        SERVICE_PATH: services/review-service
 #    container_name: review-service
 #    ports: ["8089:8089"]
 #    environment:
@@ -221,9 +221,9 @@ services:
 #  delivery-service:
 #    build:
 #      context: .
-#      dockerfile: delivery-service/Dockerfile
+#      dockerfile: services/delivery-service/Dockerfile
 #      args:
-#        SERVICE_PATH: delivery-service
+#        SERVICE_PATH: services/delivery-service
 #    container_name: delivery-service
 #    ports: ["8088:8088"]
 #    environment:
@@ -238,9 +238,9 @@ services:
 #  kitchen-service:
 #    build:
 #      context: .
-#      dockerfile: kitchen-service/Dockerfile
+#      dockerfile: services/kitchen-service/Dockerfile
 #      args:
-#        SERVICE_PATH: kitchen-service
+#        SERVICE_PATH: services/kitchen-service
 #    container_name: kitchen-service
 #    ports: ["8087:8087"]
 #    environment:
@@ -254,9 +254,9 @@ services:
 #  notification-service:
 #    build:
 #      context: .
-#      dockerfile: notification-service/Dockerfile
+#      dockerfile: services/notification-service/Dockerfile
 #      args:
-#        SERVICE_PATH: notification-service
+#        SERVICE_PATH: services/notification-service
 #    container_name: notification-service
 #    environment:
 #      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
@@ -267,9 +267,9 @@ services:
 #  basket-service:
 #    build:
 #      context: .
-#      dockerfile: basket-service/Dockerfile
+#      dockerfile: services/basket-service/Dockerfile
 #      args:
-#        SERVICE_PATH: basket-service
+#        SERVICE_PATH: services/basket-service
 #    container_name: basket-service
 #    ports: ["8086:8086"]
 #    environment:

@@ -1,0 +1,14 @@
+# Copy to .envrc and fill in your values. Never commit .envrc.
+  # Install direnv (https://direnv.net/) and run `direnv allow` in this directory.
+
+  export AWS_PROFILE=food-delivery-dev
+  export AWS_REGION=eu-west-1
+  export SPRING_PROFILES_ACTIVE=local
+
+  # Refresh CodeArtifact token (requires `aws` CLI and AWS_PROFILE above)
+  # Uncomment after Phase 0.8 provisions CodeArtifact.
+  # export CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token \
+  #   --domain food-delivery-platform \
+  #   --domain-owner $(aws sts get-caller-identity --query Account --output text) \
+  #   --query authorizationToken \
+  #   --output text)

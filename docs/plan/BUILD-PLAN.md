@@ -3,6 +3,8 @@
 > **Purpose**: A step-by-step build guide for Claude Code (Claude Pro) to construct a production-grade food ordering microservices platform on AWS. Each build step is sized to fit in a single Claude Pro session.
 >
 > **Companion document**: `architecture.md` contains the architectural reference (sections 1–10) — the *what* and *why* behind the choices below. Read it once before starting; re-consult it when a step references a specific section. This file (`build-plan.md`) is the *how* — the action plan you work through one step at a time.
+>
+> **Deferred items**: `DEFERRED.md` (same directory) tracks everything that was intentionally skipped, deferred, or found incomplete during phase reviews. Check it before starting each new phase and before declaring the platform production-ready.
 
 ---
 
@@ -96,21 +98,20 @@ Cost is minimal — pennies per GB stored plus per-request fees. Set up once in 
 
 ## Build Strategy
 
-> Read this section before starting Phase 0. It explains how the 85 build steps are sequenced and a few cross-cutting decisions that apply to every phase. The plan below makes more sense once you've absorbed these.
+> Read this section before starting Phase 0. It explains how the 98 build steps are sequenced and a few cross-cutting decisions that apply to every phase. The plan below makes more sense once you've absorbed these.
 
-### Spring profile strategy (three profiles plus one edge case)
+### Spring profile strategy (two profiles plus one edge case)
 
-Every service runs under one of three Spring profiles. The profile determines the **shape** of dependencies — what beans load, whether IAM auth is enabled, whether TLS is required. The profile does **NOT** carry environment-specific values like hostnames, passwords, or topic names. Those come from environment variables, populated by Kubernetes from ConfigMaps and Secrets (via External Secrets Operator pulling from AWS Secrets Manager) in staging/production, and from `.env` files or `application-local.yml` placeholders during local development.
+Every service runs under one of two Spring profiles. The profile determines the **shape** of dependencies — what beans load, whether IAM auth is enabled, whether TLS is required. The profile does **NOT** carry environment-specific values like hostnames, passwords, or topic names. Those come from environment variables, populated by Kubernetes from ConfigMaps and Secrets (via External Secrets Operator pulling from AWS Secrets Manager) in production, and from `.env` files or `application-local.yml` placeholders during local development.
 
-The three profiles:
+The two profiles:
 
 - **`local`** — JVM runs on a developer laptop. Dependencies are Docker Compose containers: local PostgreSQL on `localhost:5432`, local Redis with no TLS, local Kafka with `PLAINTEXT` (no IAM auth), LocalStack for AWS APIs. This is the tight dev loop.
-- **`staging`** — Service runs on EKS staging. Talks to real AWS staging resources: Aurora staging cluster, ElastiCache staging cluster, MSK staging cluster with IAM auth + TLS, real DynamoDB, real SNS/SQS/S3. No LocalStack.
-- **`production`** — Service runs on EKS production. Same shape as staging but pointed at production resources via env vars.
+- **`production`** — Service runs on EKS. Talks to real AWS resources: Aurora PostgreSQL cluster, ElastiCache Redis cluster with IAM auth + TLS, MSK cluster with IAM auth + TLS, real DynamoDB, real SNS/SQS/S3. No LocalStack.
 
 Plus one edge-case profile, used sparingly:
 
-- **`local-aws`** — JVM runs on a developer laptop, but AWS SDK calls hit **real AWS staging** instead of LocalStack. For occasional debugging — usually when something reproduces against real DynamoDB or real MSK but not against LocalStack. Activated explicitly via `-Dspring.profiles.active=local-aws`; not the default for any developer.
+- **`local-aws`** — JVM runs on a developer laptop, but AWS SDK calls hit **real AWS** instead of LocalStack. For occasional debugging — usually when something reproduces against real DynamoDB or real MSK but not against LocalStack. Activated explicitly via `-Dspring.profiles.active=local-aws`; not the default for any developer.
 
 **The rule**: profile controls shape, env vars provide values.
 
@@ -134,7 +135,7 @@ aws:
     secret-access-key: dev
 ```
 
-`application-staging.yml`:
+`application-production.yml`:
 
 ```yaml
 spring:
@@ -154,13 +155,13 @@ Same code path runs in both. The profile shapes the auth/TLS/endpoint difference
 
 ### Pilot-first sequencing — user-service before the rest
 
-The build does NOT take all 10 services through each phase in parallel. Instead, **user-service goes end-to-end through staging first**, including its CI/CD pipeline and its observability dashboard. This is the pilot. Once user-service is fully running in staging with all its supporting infrastructure, you pause and capture what you learned. Then services 2–10 follow the template.
+The build does NOT take all 10 services through each phase in parallel. Instead, **user-service goes end-to-end first**, including its CI/CD pipeline and its observability dashboard. This is the pilot. Once user-service is fully running on EKS with all its supporting infrastructure, you pause and capture what you learned. Then services 2–10 follow the template.
 
 The pilot covers, in order:
 
 1. Phase 0 (foundation IaC, complete)
 2. Phase 1 (shared libs + BOM, complete)
-3. Phase 2 (user-service implementation through K8s deploy to staging)
+3. Phase 2 (user-service implementation through K8s deploy to production)
 4. **From Phase 7**: Step 7.1 (Managed Prometheus + Grafana backend) and a user-service dashboard
 5. **From Phase 8**: Steps 8.1, 8.2, 8.3 (path-filter Lambda, buildspec templates, user-service pipeline)
 6. **Checkpoint**: write `docs/service-deploy-template.md` capturing the IRSA setup, Kustomize overlay structure, ServiceAccount/ExternalSecret/ServiceMonitor patterns, and the buildspec wiring that worked. This becomes the template for services 2–10.
@@ -177,7 +178,7 @@ Three things will be harder on user-service than on any subsequent service. Know
 
 - **IRSA wiring is fiddly the first time.** Five things need to align — trust policy, ServiceAccount annotation, EKS OIDC provider, pod volume mount, SDK credential chain. Get one wrong and the SDK errors are uninformative. Budget time. Subsequent services are copy-paste from the first.
 - **Kustomize overlay structure crystallizes during user-service.** Decisions about what goes in `base/` vs `overlays/`, how env config is templated, how secrets reference External Secrets — all get made during user-service and stay. Spend time getting them right; capture in `docs/service-deploy-template.md`.
-- **Observability scaffolding is one-time work.** First ServiceMonitor, first PrometheusRule, first Grafana dashboard. Templates emerge. Don't skip observability on the pilot — you'll lose context on what was happening in staging without it.
+- **Observability scaffolding is one-time work.** First ServiceMonitor, first PrometheusRule, first Grafana dashboard. Templates emerge. Don't skip observability on the pilot — you'll lose context on what was happening in production without it.
 
 ### API audit gaps are handled inline per service
 
@@ -195,11 +196,9 @@ Two pieces of cross-cutting audit infrastructure ride in Phase 1's shared librar
 
 The audit's priority order — testability → order idempotency → user validation → exception handlers → order pagination — is reflected in the sequencing. Testability is highest priority but requires services to exist, so it's addressed in Phase 9 (cross-cutting test scaffolding) plus the per-service slice tests added in each per-service audit step.
 
-### Staging-only on the first pass
+### Single environment — deploy directly to production
 
-Per-service phases (2 through 6 in v1) deploy ONLY to staging. Production deploys batch in Phase 10 (Production Hardening), once every service has been observed running stably in staging, dashboards are green, SLOs are tracked, and security/DR work is complete. This is already implicit in the plan — most service phases say "deploy to staging" — but worth being explicit: do not deploy any service to production until Phase 10 of v1 (and equivalently, the final hardening phase of v2/v3/v4).
-
-The only exception is the pilot CI/CD work (Step 4.1 in the pilot context): it sets up user-service's staging pipeline. Production pipeline + canary rollouts come later via Step 4.2.
+This plan uses a single environment (`production`). Per-service phases (2 through 6 in v1) deploy directly to the production EKS cluster. Phase 10 (Production Hardening) adds WAF, DR validation, and security hardening before opening to real customer traffic — but services are deployed and observable there from the start.
 
 ### Version strategy — v1 is the reference, v2/v3/v4 are extensions
 
@@ -212,12 +211,12 @@ The build is split into **four versions**, each one shippable. The point of vers
 | **v3** | Engagement | 10 (+ review, promotion, notification) | 3–4 weeks |
 | **v4** | Payment hardening | 10 (payment graduates to full service) | 2–3 weeks |
 
-**v1 is the reference implementation.** It contains every architectural pattern used across the whole platform: the outbox pattern, the saga pattern (small but real), gRPC contracts, Resilience4j circuit breakers/retries/bulkheads, the three Spring profiles, JWT auth, CodePipeline + ArgoCD GitOps, Argo Rollouts canaries, Prometheus + Grafana + X-Ray observability, SLO-based alerts, WAF, DR runbooks. Someone reading the v1 codebase end-to-end should be able to learn every pattern the platform uses — without scrolling through 10 services to find each example. v1 has every pattern represented exactly once. Anything that doesn't demonstrate a distinct pattern doesn't belong in v1.
+**v1 is the reference implementation.** It contains every architectural pattern used across the whole platform: the outbox pattern, the saga pattern (small but real), gRPC contracts, Resilience4j circuit breakers/retries/bulkheads, the two Spring profiles, JWT auth, CodePipeline + ArgoCD GitOps, Argo Rollouts canaries, Prometheus + Grafana + X-Ray observability, SLO-based alerts, WAF, DR runbooks. Someone reading the v1 codebase end-to-end should be able to learn every pattern the platform uses — without scrolling through 10 services to find each example. v1 has every pattern represented exactly once. Anything that doesn't demonstrate a distinct pattern doesn't belong in v1.
 
 **v1's 5 services and their roles:**
 
 - **user-service** — registration, login, JWT issuance. Outbox emits `USER_CREATED`. (Pattern shown: outbox, Spring Security, JWT auth, RDS Aurora.)
-- **product-service** — restaurant menus, products, search. (Pattern shown: cache-aside with Redis, DynamoDB single-table design, S3 image uploads, gRPC server.)
+- **product-service** — product catalog with stock management. (Pattern shown: cache-aside with Redis, PostgreSQL with optimistic locking for concurrent stock updates, S3 product images, gRPC server.)
 - **basket-service** — cart with upsert-by-productId. (Pattern shown: Redis as primary store, gRPC client to product-service, request idempotency keys.)
 - **payment-service (minimal)** — calls Stripe test mode, records ledger entry, emits PAYMENT_SUCCESS / PAYMENT_FAILED. (Pattern shown: DDB ledger, idempotency on external API calls, outbox emitting to Kafka.)
 - **order-service (mini-saga)** — 6-state state machine: PENDING → PAID → COMPLETED, plus PAYMENT_FAILED → COMPENSATING → CANCELED. One compensation action: restore the basket. (Pattern shown: saga pattern, Spring StateMachine, compensation handlers, idempotent event consumers, optimistic locking, saga timeout enforcer.)
@@ -288,46 +287,43 @@ The build is split into **four versions**, each one shippable. The point of vers
 > Goal: provision all shared AWS infrastructure with Terraform before writing a single line of application code. By the end of this phase, you have a working EKS cluster with databases, queues, and ArgoCD ready to receive deployments.
 
 ### Step 0.1: Monorepo bootstrap & developer prerequisites
-- [ ] **Objective**: Initialize the `food-delivery-platform` monorepo skeleton, the `food-delivery-gitops` companion repo, document local developer setup, and lock in the three-profile convention (`local`, `staging`, `production`).
-- **Files to create**:
-  - `food-delivery-platform/README.md` (top-level overview, links to the plan)
-  - `food-delivery-platform/.gitignore`
-  - `food-delivery-platform/.terraform-version` (1.7.5)
-  - `food-delivery-platform/.tool-versions` (asdf format: `java corretto-25`, `maven 3.9.x`, `terraform 1.7.5`, `kubectl 1.30.x`, `helm 3.15.x`)
-  - `food-delivery-platform/scripts/bootstrap-dev.sh` (installs awscli, kubectl, helm, terraform, sam, mvn)
-  - `food-delivery-platform/docs/developer-setup.md`
-  - `food-delivery-platform/docs/architecture.md` (copy of the architecture reference, maintained alongside the code)
-  - `food-delivery-platform/docs/spring-profiles.md` (the three-profile convention; describes `local` / `staging` / `production` / `local-aws`)
-  - `food-delivery-platform/.envrc.template` (direnv: AWS_PROFILE, AWS_REGION, CODEARTIFACT_AUTH_TOKEN refresh, SPRING_PROFILES_ACTIVE=local default)
-  - `food-delivery-platform/docker-compose.yml` (root-level: Postgres, Redis, Kafka in KRaft mode, LocalStack; used by every service when running under the `local` profile)
-  - `food-delivery-platform/dev/seed/` (seed data + scripts for local dev)
-  - Empty top-level dirs: `services/`, `platform-shared-libs/`, `platform-bom/`, `platform-infra/`, `e2e-tests/`
-  - `food-delivery-gitops/README.md` (companion repo, watched by ArgoCD)
-  - `food-delivery-gitops/.gitignore`
-  - Empty top-level dirs in gitops repo: `apps/`, `argocd/`
+- [x] **Objective**: Reorganize this repo as the `food-delivery-platform` monorepo, initialize the `food-delivery-gitops` companion repo, document local developer setup, and lock in the two-profile convention (`local`, `production`).
+- **Decision**: Rather than creating a new `food-delivery-platform` repo from scratch, this existing repo was reorganized to serve as `food-delivery-platform`. All existing services (already built and working locally) were moved under `services/`. Only one new repo was created: `food-delivery-gitops` (at `../food-delivery-gitops/`).
+- **Files created/changed**:
+  - All service dirs moved: `{service-name}/` → `services/{service-name}/`
+  - Root `pom.xml` module paths updated (`services/{service-name}`)
+  - Service `pom.xml` `<relativePath>` fixed: `../pom.xml` → `../../pom.xml`
+  - `docker-compose.yml` build contexts and `SERVICE_PATH` args updated; observability image tags pinned
+  - `start.sh` JAR path check updated
+  - `.terraform-version` (1.7.5)
+  - `.tool-versions` (asdf: java corretto-25, maven 3.9.9, terraform 1.7.5, kubectl 1.30.7, helm 3.15.4)
+  - `.envrc.template` (direnv: AWS_PROFILE, AWS_REGION, CODEARTIFACT_AUTH_TOKEN refresh, SPRING_PROFILES_ACTIVE=local)
+  - `scripts/bootstrap-dev.sh` (idempotently installs all dev tools via asdf, CodeArtifact login)
+  - `docs/developer-setup.md`
+  - `docs/spring-profiles.md` (two-profile convention; shape-vs-values rule)
+  - Empty dirs with `.gitkeep`: `platform-bom/`, `platform-infra/`, `e2e-tests/`, `dev/seed/`
+  - `../food-delivery-gitops/` repo: README, .gitignore, `apps/`, `argocd/`
 - **Key details**:
-  - Two CodeCommit repos: `food-delivery-platform` (code+infra+tests), `food-delivery-gitops` (K8s manifests). Both initialized with a commit per the layout in `architecture.md` Section 10.1.
-  - **Spring profile convention** (locked in here so subsequent service phases follow it): three profiles — `local` (Docker Compose deps + LocalStack), `staging` (real AWS staging), `production` (real AWS production). Plus `local-aws` as a sparingly-used edge case (JVM local, AWS calls hit real staging). See "Build Strategy" section above. `docs/spring-profiles.md` documents the rule "profile controls shape, env vars provide values" with an example.
-  - Document the AWS account layout (single account v1, multi-account in Phase 5).
+  - `common-libs/` stays at repo root (correct name per plan — earlier rename to `platform-shared-libs` was reverted).
+  - CodeCommit remotes wired in Phase 0.8 once AWS is provisioned. GitHub remote (`mitaka-dev/food-delivery-system`) is the current remote for this repo.
+  - **Spring profile convention** (locked in here): two profiles — `local` (Docker Compose + LocalStack), `production` (real AWS). Plus `local-aws` edge case. See `docs/spring-profiles.md`.
   - Naming convention: `{org}-{env}-{service}-{resource}` for every AWS resource.
-  - Tag every AWS resource with `Project=food-delivery`, `Environment={dev|staging|prod}`, `Service={service-name}`, `Owner={team}`, `CostCenter={code}`.
-  - The `bootstrap-dev.sh` should idempotently install all dev tools and run `aws codeartifact login --tool maven --domain {org}-platform --repository internal` once Phase 0.8 has provisioned CodeArtifact.
+  - Tag every AWS resource with `Project=food-delivery`, `Environment=production`, `Service={service-name}`, `Owner={team}`, `CostCenter={code}`.
   - Branch protection on `main` for both repos: 1 approval required, status checks must pass, no force-pushes.
-- **Acceptance criteria**: Both CodeCommit repos exist with the documented top-level structure. New developer can clone the platform repo, run `scripts/bootstrap-dev.sh`, and end up with all tools installed at correct versions. `docker-compose up` brings up local dependencies. `docs/spring-profiles.md` clearly describes the three profiles and the shape-vs-values rule.
+- **Acceptance criteria**: Repo reorganized with all services under `services/`. `mvn validate` passes across all modules. `docker compose up` works. `scripts/bootstrap-dev.sh` installs all tools. `docs/spring-profiles.md` documents the three profiles. `food-delivery-gitops` repo initialized.
 - **Dependencies**: none
 
 ### Step 0.2: Terraform — VPC and networking
-- [ ] **Objective**: Provision a multi-AZ VPC with public, private, and isolated subnets.
+- [x] **Objective**: Provision a multi-AZ VPC with public, private, and isolated subnets.
 - **Files to create**:
   - `platform-infra/modules/vpc/main.tf`
   - `platform-infra/modules/vpc/variables.tf`
   - `platform-infra/modules/vpc/outputs.tf`
-  - `platform-infra/envs/staging/network.tf`
   - `platform-infra/envs/production/network.tf`
 - **Key details**:
-  - 3 AZs in chosen region
-  - CIDR layout: `10.0.0.0/16` per env. Public `/24`s, private `/22`s, isolated `/24`s for RDS
-  - One NAT Gateway per AZ (cost vs HA tradeoff: 3 NATs in prod, 1 in staging)
+  - 2 AZs in chosen region
+  - CIDR layout: `10.0.0.0/16`. Public `/24`s, private `/22`s, isolated `/24`s for RDS
+  - Single NAT Gateway (one AZ — acceptable for a learning project; add per-AZ NATs when HA is needed)
   - Internet Gateway for public subnets
   - VPC endpoints for S3, DynamoDB, ECR, Secrets Manager, SNS, SQS, STS, Logs (gateway + interface)
   - Flow Logs enabled, sent to CloudWatch
@@ -336,12 +332,11 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 0.1
 
 ### Step 0.3: Terraform — EKS cluster on Fargate
-- [ ] **Objective**: Provision EKS cluster with Fargate-only profiles, IRSA, and core add-ons.
+- [x] **Objective**: Provision EKS cluster with Fargate-only profiles, IRSA, and core add-ons.
 - **Files to create**:
   - `platform-infra/modules/eks/main.tf`
   - `platform-infra/modules/eks/fargate-profiles.tf`
   - `platform-infra/modules/eks/addons.tf`
-  - `platform-infra/envs/staging/eks.tf`
   - `platform-infra/envs/production/eks.tf`
 - **Key details**:
   - EKS version 1.30+
@@ -354,89 +349,73 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 0.2
 
 ### Step 0.4: Terraform — RDS Aurora PostgreSQL cluster
-- [ ] **Objective**: Provision a shared Aurora PostgreSQL cluster used by Identity, Order, Promotion, Delivery (one DB per service in the same cluster).
+- [x] **Objective**: Provision a shared Aurora PostgreSQL cluster used by Identity, Order, Promotion, Delivery (one DB per service in the same cluster).
 - **Files to create**:
   - `platform-infra/modules/rds-aurora/main.tf`
   - `platform-infra/modules/rds-aurora/variables.tf`
-  - `platform-infra/envs/staging/databases.tf`
   - `platform-infra/envs/production/databases.tf`
 - **Key details**:
-  - Aurora PostgreSQL 16, Serverless v2 with min 0.5 ACU, max 4 ACU (staging) / 2-32 ACU (prod)
-  - Multi-AZ in prod, single-AZ in staging for cost
-  - In isolated subnets only — no public access
+  - Aurora PostgreSQL 16, Serverless v2 with min 0.5 ACU, max 4 ACU (scales to near-zero when idle)
+  - Single instance, in isolated subnets only — no public access
   - Master password in Secrets Manager with rotation Lambda
   - Per-service databases: `identity_db`, `order_db`, `promotion_db`, `delivery_db`
   - Per-service IAM users (created by separate migration step later)
   - Performance Insights enabled, 7-day retention
-  - Automated backups: 7 days staging, 35 days prod
+  - Automated backups: 7 days retention
 - **Acceptance criteria**: Can `psql` from a bastion or EKS pod using credentials from Secrets Manager.
 - **Dependencies**: 0.2
 
-### Step 0.5: Terraform — DynamoDB tables
-- [ ] **Objective**: Create all DynamoDB tables used by Menu, Kitchen, Payment, Review, and Notification idempotency.
-- **Files to create**:
-  - `platform-infra/modules/dynamodb-table/main.tf`
-  - `platform-infra/envs/staging/dynamodb.tf`
-  - `platform-infra/envs/production/dynamodb.tf`
-- **Key details**:
-  - On-demand billing for all tables
-  - Tables to create: `menus`, `tickets` (Kitchen), `payment-ledger`, `outbox-payment`, `outbox-kitchen`, `reviews`, `review-aggregates`, `notification-idempotency`
-  - Streams enabled on `menus`, `outbox-payment`, `outbox-kitchen`, `reviews`
-  - Point-in-time recovery on `payment-ledger`
-  - GSI on `payment-ledger`: `idempotency_key` for duplicate detection
-  - GSI on `tickets`: `restaurant_id` for "list active tickets per restaurant"
-  - TTL attribute on `notification-idempotency` (7-day expiry)
-  - Server-side encryption with KMS CMK per table
-- **Acceptance criteria**: All tables visible in console with correct keys, indexes, and streams.
-- **Dependencies**: 0.2
+### Step 0.5: Terraform — DynamoDB tables *(deferred to service phases)*
+- **Removed from Phase 0.** Provisioning DynamoDB tables weeks before the services that use them adds no value — same principle as MSK topics in Step 0.7 (*"provisioned when their respective phases land, not now"*). Each table is created alongside its service phase:
+  - `payment-ledger` + `outbox-payment` → **Step 5.1** (payment-service skeleton)
+  - `tickets` + `outbox-kitchen` → **Step 11.1** (kitchen-service)
+  - `reviews` + `review-aggregates` → **Step 15.1** (review-service)
+  - `notification-idempotency` → **Step 17.3** (notification-service)
+- The reusable `platform-infra/modules/dynamodb-table/` Terraform module (KMS CMK per table, on-demand billing, optional streams/PITR/TTL/GSI) is created in Step 5.1 when first needed, then reused in all later phases.
+- **Note**: product-service uses Aurora PostgreSQL (not DynamoDB) — no DynamoDB table is needed for products.
 
 ### Step 0.6: Terraform — ElastiCache Redis cluster
-- [ ] **Objective**: Provision a shared Redis cluster used by Basket (primary store), Menu (cache), and rate limiting.
+- [x] **Objective**: Provision a shared Redis cluster used by Basket (primary store), Menu (cache), and rate limiting.
 - **Files to create**:
   - `platform-infra/modules/elasticache-redis/main.tf`
-  - `platform-infra/envs/staging/cache.tf`
   - `platform-infra/envs/production/cache.tf`
 - **Key details**:
   - Redis 7.x, Cluster Mode enabled (sharding for horizontal scale)
-  - 2 shards in staging, 4 shards in prod, with 1 replica per shard
+  - 2 shards, 1 replica per shard
   - In-transit encryption on (TLS), at-rest encryption on
   - Auth via Redis AUTH token in Secrets Manager
   - In private subnets, security group allows EKS pods only
-  - Snapshot retention: 1 day staging, 7 days prod
+  - Snapshot retention: 1 day
   - Slow log + engine log to CloudWatch
 - **Acceptance criteria**: Can connect from EKS pod with `redis-cli --tls -h <endpoint> -p 6379 -a <token>`.
 - **Dependencies**: 0.2
 
 ### Step 0.7: Terraform — Amazon MSK (managed Kafka) cluster
-- [ ] **Objective**: Provision the MSK cluster that hosts v1's domain-event backbone (`user-events`, `order-events`, `payment-events`). v2/v3 will add more topics later.
+- [x] **Objective**: Provision the MSK cluster that hosts v1's domain-event backbone (`user-events`, `order-events`, `payment-events`). v2/v3 will add more topics later.
 - **Files to create**:
   - `platform-infra/modules/msk/main.tf`
   - `platform-infra/modules/msk/variables.tf`
   - `platform-infra/modules/msk/topics.tf` (uses `confluentinc/confluent` provider OR a Lambda that calls `kafka-topics` after cluster ready)
-  - `platform-infra/envs/staging/kafka.tf`
   - `platform-infra/envs/production/kafka.tf`
 - **Key details**:
-  - **Staging**: MSK Serverless cluster (cheaper, auto-scales, pay-per-throughput). Suitable while traffic is low.
-  - **Production**: MSK Provisioned with 3 brokers (`kafka.m7g.large` ARM-based for cost), Multi-AZ, in private subnets.
+  - MSK Serverless cluster (auto-scales, pay-per-throughput — cost-appropriate for a learning project)
   - **v1 topics** (more added in v2/v3):
-    - `user-events` (3 partitions staging / 6 prod, retention 7 days, key=userId)
-    - `order-events` (6 partitions staging / 12 prod, retention 14 days, key=orderId — important for per-order ordering)
-    - `payment-events` (3 partitions / 6, retention 30 days for audit, key=orderId)
+    - `user-events` (3 partitions, retention 7 days, key=userId)
+    - `order-events` (6 partitions, retention 14 days, key=orderId — important for per-order ordering)
+    - `payment-events` (3 partitions, retention 30 days for audit, key=orderId)
   - **Future topics** (provisioned when their respective phases land, not now): `kitchen-events`, `delivery-events`, `promotion-events`, `driver-status`. Adding a topic is a Terraform change — cheap to defer.
   - **Authentication**: IAM (IRSA-friendly) — no SASL/SCRAM passwords to manage. Each service's IRSA role gets per-topic produce/consume permissions.
   - **Encryption**: in-transit (TLS 1.2+) and at-rest (KMS CMK).
   - **Schema management**: AWS Glue Schema Registry, Avro format for all topics. Producers/consumers reference schema ID, not embedded schema.
   - **Monitoring**: enhanced monitoring (`PER_TOPIC_PER_PARTITION`), broker logs to CloudWatch, JMX metrics scraped by Prometheus.
   - **Connectivity**: private endpoints only (no public bootstrap). EKS pods connect via interface VPC endpoint.
-  - Replication factor 3 in prod, 2 in staging.
 - **Acceptance criteria**: From an EKS pod with the right IRSA, can `kafka-console-producer` to `user-events` and `kafka-console-consumer` from another pod sees the message. Glue Schema Registry shows registered Avro schemas for each v1 event type.
 - **Dependencies**: 0.2, 0.3
 
 ### Step 0.8: Terraform — SNS topics, SQS queues, DLQs (compensation + webhook intake)
-- [ ] **Objective**: Provision the SNS/SQS messaging used for compensation commands, Stripe webhook intake, and the few simple fan-out cases that don't justify a Kafka topic.
+- [x] **Objective**: Provision the SNS/SQS messaging used for compensation commands, Stripe webhook intake, and the few simple fan-out cases that don't justify a Kafka topic.
 - **Files to create**:
   - `platform-infra/modules/sns-sqs-pair/main.tf` (creates topic + queue + subscription + DLQ)
-  - `platform-infra/envs/staging/messaging-sns-sqs.tf`
   - `platform-infra/envs/production/messaging-sns-sqs.tf`
 - **Key details**:
   - **v1 queues**:
@@ -450,7 +429,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 0.2
 
 ### Step 0.9: Terraform — ECR repositories, IAM roles, CodeArtifact domain
-- [ ] **Objective**: Create one ECR repo per v1 service plus the shared IAM roles for CodeBuild and CI processes, plus the CodeArtifact domain that hosts the BOM and shared libraries.
+- [x] **Objective**: Create one ECR repo per v1 service plus the shared IAM roles for CodeBuild and CI processes, plus the CodeArtifact domain that hosts the BOM and shared libraries.
 - **Files to create**:
   - `platform-infra/modules/ecr-repo/main.tf`
   - `platform-infra/envs/shared/ecr.tf`
@@ -471,10 +450,9 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 0.1
 
 ### Step 0.10: Terraform — API Gateway and ALB foundation
-- [ ] **Objective**: Provision the public API Gateway plus internal ALBs for service ingress.
+- [x] **Objective**: Provision the public API Gateway plus internal ALBs for service ingress.
 - **Files to create**:
   - `platform-infra/modules/api-gateway/main.tf`
-  - `platform-infra/envs/staging/api.tf`
   - `platform-infra/envs/production/api.tf`
 - **Key details**:
   - HTTP API Gateway (cheaper than REST API, sufficient for our needs)
@@ -488,7 +466,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 0.2
 
 ### Step 0.11: ArgoCD installation and bootstrap
-- [ ] **Objective**: Install ArgoCD on the EKS cluster and wire it to the `food-delivery-gitops` CodeCommit repo.
+- [x] **Objective**: Install ArgoCD on the EKS cluster and wire it to the `food-delivery-gitops` CodeCommit repo.
 - **Files to create**:
   - `platform-infra/scripts/install-argocd.sh`
   - `food-delivery-gitops/argocd/install/values.yaml`
@@ -637,7 +615,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 >
 > **PILOT NOTE**: user-service is the **pilot service for v1** (and the template for every later service in v2, v3, v4). In addition to Steps 2.1 through 2.6 below, the user-service pilot also includes — executed in the same overall arc, before any other service phase in v1 starts:
 > - **Step 7.1** (Managed Prometheus + Grafana backend, plus user-service dashboard) — pulled forward from Phase 7 (Observability)
-> - **Steps 8.1, 8.2, 8.3** (CodeCommit policies + path-filter Lambda + buildspec templates + user-service staging pipeline) — pulled forward from Phase 8 (CI/CD)
+> - **Steps 8.1, 8.2, 8.3** (CodeCommit policies + path-filter Lambda + buildspec templates + user-service pipeline) — pulled forward from Phase 8 (CI/CD)
 > - **Step 2.7** (consolidate the deploy template) — captures what was learned, for services 2–10 across all versions to reuse
 >
 > The remainder of Phase 7 and Phase 8 — X-Ray, SLO alerts, canary rollouts, replicating pipelines to the other v1 services — happens after all v1 services exist, in the original phase order.
@@ -648,7 +626,7 @@ The build is split into **four versions**, each one shippable. The point of vers
   - `services/user-service/pom.xml`
   - `services/user-service/src/main/java/.../UserApplication.java`
   - `services/user-service/src/main/resources/application.yml`
-  - `services/user-service/src/main/resources/application-staging.yml`
+  - `services/user-service/src/main/resources/application-production.yml`
   - `services/user-service/src/main/resources/db/migration/V1__users.sql`
   - `services/user-service/src/main/resources/db/migration/V2__refresh_tokens.sql`
   - `services/user-service/src/main/resources/db/migration/V3__outbox.sql` (use shared snippet from Step 1.4)
@@ -725,7 +703,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 2.3
 
 ### Step 2.5: K8s manifests + ArgoCD application
-- [ ] **Objective**: Wire user-service into the GitOps repo so ArgoCD deploys it to staging.
+- [ ] **Objective**: Wire user-service into the GitOps repo so ArgoCD deploys it to EKS.
 - **Files to create**:
   - `food-delivery-gitops/apps/user-service/base/deployment.yaml`
   - `food-delivery-gitops/apps/user-service/base/service.yaml`
@@ -734,18 +712,17 @@ The build is split into **four versions**, each one shippable. The point of vers
   - `food-delivery-gitops/apps/user-service/base/externalsecret.yaml`
   - `food-delivery-gitops/apps/user-service/base/servicemonitor.yaml`
   - `food-delivery-gitops/apps/user-service/base/kustomization.yaml`
-  - `food-delivery-gitops/apps/user-service/overlays/staging/{kustomization.yaml,image-tag.yaml,replicas.yaml}`
-  - `food-delivery-gitops/apps/user-service/overlays/production/...`
-  - `food-delivery-gitops/argocd/applications/user-service-staging.yaml`
+  - `food-delivery-gitops/apps/user-service/overlays/production/{kustomization.yaml,image-tag.yaml,replicas.yaml}`
+  - `food-delivery-gitops/argocd/applications/user-service.yaml`
 - **Key details**:
-  - Deployment: 2 replicas staging / 4 prod, init container runs Flyway migrate
+  - Deployment: 2 replicas, init container runs Flyway migrate
   - HPA: scale on CPU 70%, min 2 max 10
   - SA annotated with `eks.amazonaws.com/role-arn` (IRSA role created by Terraform)
   - ExternalSecret references Secrets Manager paths for DB password + JWT private key
   - ServiceMonitor for Prometheus to scrape `/actuator/prometheus`
   - PodDisruptionBudget: minAvailable 1
   - Resources: 500m CPU / 512Mi mem requests, 1 CPU / 1Gi limits
-- **Acceptance criteria**: Push to staging branch of food-delivery-gitops causes ArgoCD to deploy user-service. `kubectl get pods -n identity` shows running pods. Public API Gateway URL `POST /v1/auth/register` succeeds end-to-end.
+- **Acceptance criteria**: Push to main branch of food-delivery-gitops causes ArgoCD to deploy user-service. `kubectl get pods -n identity` shows running pods. Public API Gateway URL `POST /v1/auth/register` succeeds end-to-end.
 - **Dependencies**: 0.11, 2.4
 
 ### Step 2.6: Address user-service audit gaps
@@ -770,7 +747,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 2.5, 1.2 (the shared `ApiError` record must exist)
 
 ### Step 2.7: Consolidate deploy template (pilot checkpoint)
-- [ ] **Objective**: Now that user-service is fully running in staging with its CI/CD pipeline and dashboard, capture the patterns that worked. This document becomes the template for services 2–10.
+- [ ] **Objective**: Now that user-service is fully running on EKS with its CI/CD pipeline and dashboard, capture the patterns that worked. This document becomes the template for services 2–10.
 - **Files to create**:
   - `food-delivery-platform/docs/service-deploy-template.md`
 - **Key details**:
@@ -780,9 +757,9 @@ The build is split into **four versions**, each one shippable. The point of vers
     - **External Secrets**: per-service `ExternalSecret` pattern, Secrets Manager path conventions
     - **ServiceMonitor + dashboard**: per-service monitoring scaffold, dashboard JSON file location, standard RED panels
     - **Pipeline wiring**: how to add a new service to the path-filter Lambda's routing config, what Terraform module instantiation looks like (one short `.tf` file per service)
-    - **Verification checklist**: what "service X is fully deployed to staging" means concretely
+    - **Verification checklist**: what "service X is fully deployed to production EKS" means concretely
   - Template includes a short FAQ section listing the surprises encountered on user-service so the next service author doesn't repeat them.
-- **Acceptance criteria**: A developer who has never deployed a service to this platform can follow `docs/service-deploy-template.md` start-to-finish and end up with a new service running in staging without needing to read the build plan's Phase 2.
+- **Acceptance criteria**: A developer who has never deployed a service to this platform can follow `docs/service-deploy-template.md` start-to-finish and end up with a new service running on EKS without needing to read the build plan's Phase 2.
 - **Dependencies**: 2.6, and the pulled-forward Steps 7.1 + 8.1 + 8.2 + 8.3 (all of which complete before this consolidation)
 
 ---
@@ -792,92 +769,76 @@ The build is split into **four versions**, each one shippable. The point of vers
 
 > Goal: a working product/menu service with cache-aside, image upload via pre-signed URLs, gRPC verification endpoint, and the public search API.
 
-### Step 3.1: product-service skeleton + DynamoDB integration
-- [ ] **Objective**: Spring Boot service with AWS SDK v2 DynamoDB client and basic CRUD.
-- **Files to create**:
-  - `services/product-service/pom.xml`
-  - `services/product-service/src/main/java/.../ProductApplication.java`
-  - `services/product-service/src/main/java/.../config/DynamoDbConfig.java`
-  - `services/product-service/src/main/java/.../domain/Menu.java`
-  - `services/product-service/src/main/java/.../domain/MenuItem.java`
-  - `services/product-service/src/main/java/.../domain/MenuRepository.java`
-  - `services/product-service/src/main/resources/application.yml`
-  - `services/product-service/Dockerfile`
+### Step 3.1: product-service — Aurora wiring + Flyway migrations + test coverage
+- [ ] **Objective**: Prepare the existing product-service for AWS deployment — wire Aurora PostgreSQL via the production Spring profile and add Flyway schema migrations replacing the `ddl-auto: update` used locally.
+- **Files to create/edit**:
+  - `services/product-service/src/main/resources/application-production.yml` (Aurora datasource via `${DB_URL}`, credentials from Secrets Manager wired at Step 0.11)
+  - `services/product-service/src/main/resources/db/migration/V1__create_products.sql`
+  - `services/product-service/src/test/java/.../repository/ProductRepositoryIT.java` (Testcontainers PostgreSQL)
+  - `services/product-service/Dockerfile` (if not already present)
 - **Key details**:
-  - DynamoDB Enhanced Client (Java SDK v2)
-  - Schema: PK = `RESTAURANT#{restaurantId}`, SK = `MENU` for the full menu document; SK = `ITEM#{itemId}` for individual items
-  - `Menu` is a denormalized document containing categories → items → modifiers
-  - `MenuItem` fields: `id`, `name`, `description`, `price` (Money), `imageS3Key`, `availability`, `schedule` (optional), `dietaryTags`
-  - All amounts use `BigDecimal` via the Money shared DTO
-- **Acceptance criteria**: Local Spring Boot test against Testcontainers DynamoDB Local writes a menu, reads it back, asserts equality.
+  - Schema: `products` table — `id` (UUID PK), `name`, `description`, `price` (NUMERIC), `category` (VARCHAR), `stock` (INTEGER), `version` (BIGINT for optimistic locking)
+  - `@Version` optimistic locking already in place — verify tests cover the `OptimisticLockingFailureException` path on concurrent stock updates
+  - Staging profile points at Aurora; local profile keeps the Docker Postgres datasource unchanged
+  - Uses Aurora PostgreSQL (provisioned in Step 0.4) — no new infrastructure needed
+- **Acceptance criteria**: `@DataJpaTest` + Testcontainers write a product, read it back, assert equality. Concurrent stock update test confirms `OptimisticLockingFailureException` fires correctly.
 - **Dependencies**: 1.4
 
-### Step 3.2: Public REST endpoints + caching layer
-- [ ] **Objective**: Implement `GET /v1/restaurants/{id}/menu` and `GET /v1/restaurants/search` with cache-aside.
+### Step 3.2: Caching layer + search endpoint
+- [ ] **Objective**: Add Redis cache-aside in front of product reads and a search endpoint.
 - **Files to create**:
-  - `services/product-service/src/main/java/.../api/MenuController.java`
-  - `services/product-service/src/main/java/.../service/MenuService.java`
-  - `services/product-service/src/main/java/.../cache/MenuCache.java`
-  - `services/product-service/src/main/java/.../cache/RedisCacheConfig.java`
-  - `services/product-service/src/main/resources/application-cache.yml`
-  - `services/product-service/src/test/java/.../service/MenuServiceCacheIT.java`
+  - `services/product-service/src/main/java/.../cache/ProductCacheConfig.java`
+  - `services/product-service/src/test/java/.../service/ProductServiceCacheIT.java`
 - **Key details**:
-  - Cache key: `menu:v1:restaurant:{restaurantId}`, TTL 30 min
-  - Cache-aside: cache → miss → DynamoDB → populate → return
+  - Cache key: `product:v1:{productId}`, TTL 30 min
+  - Cache-aside: cache → miss → PostgreSQL → populate → return
   - On write (Step 3.3), explicitly delete cache key — do not rely solely on TTL
   - Cache-bypass query param `?nocache=true` (auth-gated for admins)
-  - Compress JSON in cache with snappy if > 5 KB
-  - Search v1: simple DynamoDB scan with filter; document plan to migrate to OpenSearch in Phase 5+
-- **Acceptance criteria**: First request hits DynamoDB; second request within 30 min hits cache (verified by metric `cache.hit`).
+  - Search v1: Spring Data JPA `LIKE` query on `name` and `description`; existing category filter already in place
+- **Acceptance criteria**: First request hits PostgreSQL; second request within 30 min hits cache (verified by metric `cache.hit`).
 - **Dependencies**: 3.1
 
-### Step 3.3: Restaurant-owner write endpoints + S3 image uploads
-- [ ] **Objective**: Restaurant owners can edit menus; image uploads go directly to S3 via pre-signed URLs.
+### Step 3.3: Admin write endpoints + S3 image uploads
+- [ ] **Objective**: Admin users can update products; product images upload directly to S3 via pre-signed URLs.
 - **Files to create**:
-  - `services/product-service/src/main/java/.../api/MenuAdminController.java`
-  - `services/product-service/src/main/java/.../service/MenuMutationService.java`
   - `services/product-service/src/main/java/.../service/ImageUploadService.java`
-  - `services/product-service/src/main/java/.../security/RestaurantOwnerAuthorizer.java`
-  - `services/product-service/src/test/java/.../api/MenuAdminControllerIT.java`
+  - `services/product-service/src/test/java/.../api/ProductControllerIT.java`
 - **Key details**:
-  - JWT must include `role=RESTAURANT_OWNER` AND `restaurantId` matching the resource
-  - `POST /v1/restaurants/{id}/menu/items` and `PATCH /v1/menu/items/{itemId}`
-  - On any mutation: write to DynamoDB, then `cache.delete(menuKey)` — order matters
-  - `POST /v1/menu/items/{itemId}/image-upload-url` returns pre-signed S3 PUT URL valid 5 min, max 5 MB
-  - Image keys are content-addressed: `menu/{restaurantId}/{itemId}/{sha256}.jpg`
-  - Lambda triggered on S3 PutObject resizes to standard variants (thumb, medium, full) and updates the menu item
-- **Acceptance criteria**: Update item price → first GET after update returns new price (cache invalidation works). Upload an image and access via CloudFront URL.
+  - JWT must include `role=ADMIN` (already enforced in existing `ProductController`)
+  - On any mutation: write to PostgreSQL via JPA, then `cache.delete(productKey)` — order matters
+  - `POST /v1/products/{id}/image-upload-url` returns pre-signed S3 PUT URL valid 5 min, max 5 MB
+  - Image keys are content-addressed: `products/{productId}/{sha256}.jpg`
+  - Lambda triggered on S3 PutObject resizes to standard variants (thumb, medium, full) and updates the `image_s3_key` column
+- **Acceptance criteria**: Update product price → first GET after update returns new price (cache invalidation works). Upload an image and access via CloudFront URL.
 - **Dependencies**: 3.2
 
-### Step 3.4: gRPC server for internal verification
-- [ ] **Objective**: Expose `MenuService.VerifyItem(restaurantId, itemId)` for Basket and Order services.
+### Step 3.4: gRPC server for internal price/availability verification
+- [ ] **Objective**: Expose `ProductService.VerifyProduct(productId)` for Basket and Order services to confirm item availability and current price before acting on it.
 - **Files to create**:
-  - `platform-shared-libs/common-events/src/main/proto/menu.proto`
-  - `services/product-service/src/main/java/.../grpc/MenuGrpcService.java`
-  - `services/product-service/src/test/java/.../grpc/MenuGrpcServiceTest.java`
+  - `platform-shared-libs/common-events/src/main/proto/product.proto`
+  - `services/product-service/src/main/java/.../grpc/ProductGrpcService.java`
+  - `services/product-service/src/test/java/.../grpc/ProductGrpcServiceTest.java`
 - **Key details**:
-  - Returns `ItemAvailability { exists, available_now, current_price, restaurant_paused }`
-  - `available_now` considers menu schedule (e.g., breakfast 06:00–11:00)
-  - `restaurant_paused` reflects state set by Kitchen Service via `RESTAURANT_PAUSED` event consumer
+  - Returns `ProductAvailability { exists, in_stock, current_price, stock }`
   - Cached in Redis with TTL 60s — verifies are slightly stale-tolerant; final price-locking happens at Order checkout
   - Resilience4j on the server side: rate limiter 1000 req/s per source pod
-- **Acceptance criteria**: gRPC client from a test calls `VerifyItem` and gets correct response in < 50ms p99.
+- **Acceptance criteria**: gRPC client from a test calls `VerifyProduct` and gets correct response in < 50ms p99.
 - **Dependencies**: 3.3
 
 ### Step 3.5: RESTAURANT_PAUSED listener + manifests + deployment
-- [ ] **Objective**: Subscribe to Kitchen events to hide overloaded restaurants. Deploy to staging.
+- [ ] **Objective**: Subscribe to Kitchen events to hide overloaded restaurants. Deploy to EKS.
 - **Files to create**:
   - `services/product-service/src/main/java/.../listener/RestaurantPausedListener.java`
-  - `services/product-service/src/main/java/.../domain/RestaurantStatus.java` (DDB item)
+  - `services/product-service/src/main/java/.../domain/RestaurantStatus.java` (JPA entity — PostgreSQL row tracking paused/resumed state)
   - `food-delivery-gitops/apps/product-service/base/...`
-  - `food-delivery-gitops/apps/product-service/overlays/{staging,production}/...`
-  - `food-delivery-gitops/argocd/applications/product-service-staging.yaml`
+  - `food-delivery-gitops/apps/product-service/overlays/production/...`
+  - `food-delivery-gitops/argocd/applications/product-service.yaml`
 - **Key details**:
   - **Kafka consumer** subscribed to topic `kitchen-events` with consumer group `product-service`, filtering on `eventType` header (`RESTAURANT_PAUSED`, `RESTAURANT_RESUMED`)
   - Updates `RestaurantStatus` DDB row with `paused = true/false` and `pausedAt`
   - Search and `VerifyItem` filter out paused restaurants
   - Auto-resume after configurable idle period (Kitchen emits `RESTAURANT_RESUMED`)
-- **Acceptance criteria**: Manually publish `RESTAURANT_PAUSED` to MSK topic `kitchen-events` → search no longer returns that restaurant. ArgoCD shows Synced/Healthy in staging.
+- **Acceptance criteria**: Manually publish `RESTAURANT_PAUSED` to MSK topic `kitchen-events` → search no longer returns that restaurant. ArgoCD shows Synced/Healthy.
 - **Dependencies**: 3.4, 0.11
 
 ---
@@ -941,13 +902,13 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 4.2, 3.4
 
 ### Step 4.4: Checkout endpoint + manifests + deployment
-- [ ] **Objective**: Implement `POST /v1/basket/checkout` that locks the basket and returns a pre-order DTO; deploy to staging.
+- [ ] **Objective**: Implement `POST /v1/basket/checkout` that locks the basket and returns a pre-order DTO; deploy to EKS.
 - **Files to create**:
   - `services/basket-service/src/main/java/.../service/CheckoutService.java`
   - `services/basket-service/src/main/java/.../api/CheckoutController.java`
   - `food-delivery-gitops/apps/basket-service/base/...`
-  - `food-delivery-gitops/apps/basket-service/overlays/{staging,production}/...`
-  - `food-delivery-gitops/argocd/applications/basket-service-staging.yaml`
+  - `food-delivery-gitops/apps/basket-service/overlays/production/...`
+  - `food-delivery-gitops/argocd/applications/basket-service.yaml`
 - **Key details**:
   - Checkout re-verifies every item via Menu gRPC, computes final subtotal, marks basket `LOCKED` (Redis SETNX with checkout token)
   - Returns `PreOrder` DTO with all data Order Service needs to create the order
@@ -991,11 +952,16 @@ The build is split into **four versions**, each one shippable. The point of vers
   - `services/payment-service/src/main/resources/application.yml`
   - `services/payment-service/Dockerfile`
 - **Key details**:
-  - DynamoDB table from Step 0.5: `payment-ledger` PK = `payment_intent_id`, SK = `entry_seq`.
+  - `payment-ledger` table: PK=`payment_intent_id` (S), SK=`entry_seq` (N).
   - Entry types (v1 subset): `INITIATED`, `CAPTURED`, `FAILED`. (v4 adds `AUTHORIZED`, `REFUNDED`, `DISPUTED`.)
   - Append-only: never `UpdateItem`, only `PutItem` with conditional `attribute_not_exists`.
   - GSI on `idempotency_key` for the duplicate-charge check.
   - PII discipline: never log PAN; only `last4` and Stripe token references.
+- **Infrastructure** (deferred from Step 0.5 — provision here when the service is built):
+  - Create `platform-infra/modules/dynamodb-table/` (reusable module: `main.tf`, `variables.tf`, `outputs.tf`; KMS CMK per table, on-demand billing, optional streams/PITR/TTL/GSI via dynamic blocks) — first use of this module
+  - Create `platform-infra/envs/production/dynamodb.tf`, then add:
+    - `payment-ledger`: PK=`payment_intent_id` (S), SK=`entry_seq` (N), PITR enabled, GSI on `idempotency_key` (S), KMS CMK
+    - `outbox-payment`: PK=`event_id` (S), streams enabled (`NEW_AND_OLD_IMAGES`), KMS CMK
 - **Acceptance criteria**: Insert ledger entries, list all entries for a payment intent, assert ordering.
 - **Dependencies**: 1.4
 
@@ -1019,19 +985,19 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 5.1
 
 ### Step 5.3: Polling outbox publisher + K8s manifests + deployment
-- [ ] **Objective**: Polling-based outbox publisher (sidecar pattern) for v1; deploy to staging.
+- [ ] **Objective**: Polling-based outbox publisher (sidecar pattern) for v1; deploy to EKS.
 - **Files to create**:
   - `services/payment-service/src/main/java/.../outbox/OutboxPublisher.java` (uses the `common-outbox` library from Step 1.4)
   - `food-delivery-gitops/apps/payment-service/base/...` (deployment, hpa, sa, externalsecret, servicemonitor, networkpolicy)
-  - `food-delivery-gitops/apps/payment-service/overlays/staging/...`
-  - `food-delivery-gitops/argocd/applications/payment-service-staging.yaml`
+  - `food-delivery-gitops/apps/payment-service/overlays/production/...`
+  - `food-delivery-gitops/argocd/applications/payment-service.yaml`
 - **Key details**:
   - **v1 uses polling publisher** running as a `@Scheduled` task in the same pod (sidecar pattern). DDB Streams-based Lambda publisher deferred to v4.
   - Polling interval: 500ms; batch size: 100; uses `SELECT ... FOR UPDATE SKIP LOCKED` semantics on a per-row basis via DDB conditional writes.
   - Publishes to MSK topic `payment-events` (with `orderId` as partition key for per-order ordering).
   - Payment service deployed in dedicated namespace `payment` with stricter NetworkPolicy (only order-service can SQS-send `charge-payment`).
   - Standard manifest set (per `docs/service-deploy-template.md` from Step 2.7).
-- **Acceptance criteria**: End-to-end: order-service writes a `CHARGE_PAYMENT` SQS message → payment-service processes → outbox emits `PAYMENT_SUCCESS` to MSK within 1s. ArgoCD shows payment-service Synced/Healthy in staging.
+- **Acceptance criteria**: End-to-end: order-service writes a `CHARGE_PAYMENT` SQS message → payment-service processes → outbox emits `PAYMENT_SUCCESS` to MSK within 1s. ArgoCD shows payment-service Synced/Healthy.
 - **Dependencies**: 5.2, 0.11
 
 ### Step 5.4: Address payment-service v1 gaps
@@ -1166,22 +1132,22 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 6.5
 
 ### Step 6.7: K8s manifests + audit gaps + observability dashboard
-- [ ] **Objective**: Deploy order-service to staging, address audit gaps, build the saga dashboard.
+- [ ] **Objective**: Deploy order-service to EKS, address audit gaps, build the saga dashboard.
 - **Files to create**:
   - `food-delivery-gitops/apps/order-service/base/...` (deployment, hpa, sa, externalsecret, servicemonitor, networkpolicy)
-  - `food-delivery-gitops/apps/order-service/overlays/staging/...`
-  - `food-delivery-gitops/argocd/applications/order-service-staging.yaml`
+  - `food-delivery-gitops/apps/order-service/overlays/production/...`
+  - `food-delivery-gitops/argocd/applications/order-service.yaml`
   - `food-delivery-gitops/apps/order-service/base/grafana-dashboard-saga.json`
   - `services/order-service/src/main/java/.../exception/GlobalExceptionHandler.java`
   - `services/order-service/src/main/java/.../exception/OrderServiceExceptions.java`
   - `services/order-service/src/test/java/.../exception/GlobalExceptionHandlerIT.java`
 - **Key details**:
-  - **K8s manifests**: 4 replicas in prod (highest criticality of v1's services), Flyway init container, PodDisruptionBudget minAvailable 2, resources 1 CPU/1Gi request, 2 CPU/2Gi limit, liveness `/actuator/health/liveness`, readiness `/actuator/health/readiness`.
+  - **K8s manifests**: 2 replicas (highest criticality of v1's services), Flyway init container, PodDisruptionBudget minAvailable 1, resources 1 CPU/1Gi request, 2 CPU/2Gi limit, liveness `/actuator/health/liveness`, readiness `/actuator/health/readiness`.
   - NetworkPolicy: allow ingress from API Gateway (via VPC link). Egress to MSK, SQS, payment-service, basket-service.
   - **Audit §5 for order-service**: `@RestControllerAdvice` with explicit handlers for `OrderNotFoundException` → 404, `OrderStateConflictException` → 409 (e.g. "can't cancel order in COMPLETED"), `IdempotencyKeyMismatchException` → 409, `MethodArgumentNotValidException` → 400, `Exception` → 500. Uses shared `ApiError` from `common-exceptions` (Step 1.2).
   - **Saga dashboard panels**: orders by state (PENDING/PAID/COMPLETED/COMPENSATING/CANCELED/FAILED), time-in-state p50/p99, compensation rate, outbox lag, timeout enforcer fires.
   - Alert rules: `compensation_rate > 5%` for 5 min, `outbox_lag > 10s` for 5 min, `orders_stuck > 0` for 30 min.
-- **Acceptance criteria**: ArgoCD shows Healthy. End-to-end smoke test against staging: register user → add to basket → checkout → order created → payment captured → order COMPLETED. Then: same but force a Stripe test-mode decline → order CANCELED via the compensation path. Saga dashboard reflects both runs.
+- **Acceptance criteria**: ArgoCD shows Healthy. End-to-end smoke test: register user → add to basket → checkout → order created → payment captured → order COMPLETED. Then: same but force a Stripe test-mode decline → order CANCELED via the compensation path. Saga dashboard reflects both runs.
 - **Dependencies**: 6.6, 0.11, 1.2
 
 ---
@@ -1268,7 +1234,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 
 > Goal: every service has a fully AWS-native pipeline triggered from the **single** `food-delivery-platform` monorepo via path-filtered EventBridge rules. **No GitHub Actions anywhere.** All pipelines write image-tag bumps to the companion `food-delivery-gitops` repo, which ArgoCD reconciles to EKS.
 >
-> **Note**: Steps 8.1, 8.2, and 8.3 below were pulled forward into the user-service pilot (executed during Phase 2). The path-filter Lambda, buildspec templates, and user-service staging pipeline already exist by the time Phase 8 starts. Phase 8 covers: (a) production deployment with manual approval + canary (Step 8.4), (b) replicating pipelines to the remaining 4 v1 services (Step 8.5), (c) pipeline + ArgoCD notifications (Step 8.6). Steps 8.1–8.3 here remain as a reference for what the pilot work delivered.
+> **Note**: Steps 8.1, 8.2, and 8.3 below were pulled forward into the user-service pilot (executed during Phase 2). The path-filter Lambda, buildspec templates, and user-service pipeline already exist by the time Phase 8 starts. Phase 8 covers: (a) canary rollouts (Step 8.4), (b) replicating pipelines to the remaining 4 v1 services (Step 8.5), (c) pipeline + ArgoCD notifications (Step 8.6). Steps 8.1–8.3 here remain as a reference for what the pilot work delivered.
 
 ### Step 8.1: CodeCommit access policies + path-filter Lambda + IAM cross-cutting
 - [ ] **Objective**: Configure access controls on the two CodeCommit repos created in Step 0.1, build the path-filter Lambda that decides which pipelines to start on a given commit, and finalize CI IAM roles. (CodeArtifact and most IAM was already provisioned in Step 0.9 — this step is the CI-pipeline-specific glue.)
@@ -1281,15 +1247,15 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Key details**:
   - **Path-filter Lambda** receives EventBridge `CodeCommit Repository State Change` events for `food-delivery-platform`. It uses `git diff --name-only` (via the CodeCommit GetDifferences API) between the previous and new commits to determine which top-level directories changed.
   - Routing logic the Lambda implements:
-    - Touched `services/{name}/**` → start `pipeline-{name}-staging`
+    - Touched `services/{name}/**` → start `pipeline-{name}`
     - Touched `platform-shared-libs/**` or `platform-bom/**` → start ALL 10 service pipelines (parallel)
-    - Touched `platform-infra/**` → start `pipeline-platform-infra-staging` (Terraform plan + apply with manual approval)
+    - Touched `platform-infra/**` → start `pipeline-platform-infra` (Terraform plan + apply with manual approval)
     - Touched `e2e-tests/**` → start `pipeline-e2e-tests`
   - The Lambda calls `codepipeline:StartPipelineExecution` on each affected pipeline.
   - **Approval rules** on `food-delivery-platform/main`: 1 approval required, all status checks (build of changed services) must pass before merge.
-  - **Approval rules** on `food-delivery-gitops/main`: 2 approvals for `apps/**/overlays/production/**` paths only (production manifest changes need extra eyeballs).
+  - **Approval rules** on `food-delivery-gitops/main`: 1 approval required before merge.
   - SSH key (already provisioned in Step 0.11) is what ArgoCD uses to read `food-delivery-gitops`. CodeBuild gitops-bump jobs use a separate, write-scoped IAM user with HTTPS git credentials in Secrets Manager.
-- **Acceptance criteria**: Pushing a commit that touches only `services/user-service/**` triggers `pipeline-user-service-staging` and no other pipelines. Pushing a commit that touches `platform-bom/pom.xml` triggers all v1 service pipelines (5 in v1; this fan-out grows as v2/v3 add services).
+- **Acceptance criteria**: Pushing a commit that touches only `services/user-service/**` triggers `pipeline-user-service` and no other pipelines. Pushing a commit that touches `platform-bom/pom.xml` triggers all v1 service pipelines (5 in v1; this fan-out grows as v2/v3 add services).
 - **Dependencies**: 0.9, 0.11
 
 ### Step 8.2: Reusable buildspec templates + monorepo helper scripts
@@ -1307,55 +1273,53 @@ The build is split into **four versions**, each one shippable. The point of vers
   - `build-test-scan.yml`: Java 25 install (Corretto), CodeArtifact login, `mvn -B -pl $SERVICE_PATH -am verify -Pcoverage`, OWASP Dependency-Check on the service module, JaCoCo gate ≥ 80%, CodeGuru Security scan, fail on Critical/High.
   - `integration-test.yml`: brings up Testcontainers (PostgreSQL, Redis, **Kafka via Confluent image**) inside the build container plus LocalStack (SQS, SNS, DDB), runs `mvn -B -pl $SERVICE_PATH -Pintegration-test`.
   - `package-and-push.yml`: `cd $SERVICE_PATH && docker buildx build --platform linux/amd64,linux/arm64 ...`, tag = git SHA, push to ECR.
-  - `gitops-bump.yml`: clones `food-delivery-gitops`, edits `apps/$SERVICE/overlays/$ENV/image-tag.yaml`, commits with `chore(deploy): $SERVICE → $TAG [$ENV]`, pushes. ArgoCD picks up within ~1 minute.
+  - `gitops-bump.yml`: clones `food-delivery-gitops`, edits `apps/$SERVICE/overlays/production/image-tag.yaml`, commits with `chore(deploy): $SERVICE → $TAG`, pushes. ArgoCD picks up within ~1 minute.
   - `smoke-test.yml`: hits service health endpoint in target env, runs k6 perf script with SLO thresholds.
   - All buildspecs use the **monorepo root** as `CODEBUILD_SRC_DIR` and rely on `SERVICE_PATH` (e.g., `services/user-service`) being set per pipeline.
 - **Acceptance criteria**: A test service using these buildspecs builds, tests, scans, and pushes an image to ECR successfully. Modifying a shared lib triggers a rebuild of dependent services thanks to `mvn -am`.
 - **Dependencies**: 8.1
 
 ### Step 8.3: CodePipeline Terraform module + first pipeline (user-service staging)
-- [ ] **Objective**: Reusable Terraform module that defines the full pipeline; instantiate for user-service staging deployment as the proving ground.
+- [ ] **Objective**: Reusable Terraform module that defines the full pipeline; instantiate for user-service as the proving ground.
 - **Files to create**:
   - `platform-infra/modules/service-pipeline/main.tf`
   - `platform-infra/modules/service-pipeline/variables.tf`
   - `platform-infra/modules/service-pipeline/codebuild-projects.tf`
   - `platform-infra/modules/service-pipeline/pipeline-stages.tf`
   - `platform-infra/modules/service-pipeline/eventbridge-trigger.tf`
-  - `platform-infra/envs/staging/pipelines/identity-pipeline.tf`
+  - `platform-infra/envs/production/pipelines/identity-pipeline.tf`
 - **Key details**:
-  - Module variables: `service_name`, `service_path` (e.g., `services/user-service`), `java_version` (default `25`), `has_database` (toggles PG Testcontainer), `has_grpc`, `has_kafka` (toggles Kafka Testcontainer), `target_env`.
-  - The module **does not** create its own EventBridge rule — instead it registers the pipeline with the path-filter Lambda from 13.1 (via SSM Parameter Store config).
-  - Pipeline stages match `architecture.md` Section 10.4: Source (CodeCommit `food-delivery-platform`) → Build → Test (parallel) → IntegrationTest → SAST/SCA → PackageAndPush → InspectorScan → DeployStaging (gitops bump) → SmokeTest → ProductionApproval → DeployProduction.
+  - Module variables: `service_name`, `service_path` (e.g., `services/user-service`), `java_version` (default `25`), `has_database` (toggles PG Testcontainer), `has_grpc`, `has_kafka` (toggles Kafka Testcontainer).
+  - The module **does not** create its own EventBridge rule — instead it registers the pipeline with the path-filter Lambda from 8.1 (via SSM Parameter Store config).
+  - Pipeline stages match `architecture.md` Section 10.4: Source (CodeCommit `food-delivery-platform`) → Build → Test (parallel) → IntegrationTest → SAST/SCA → PackageAndPush → InspectorScan → DeployApproval → Deploy (gitops bump) → SmokeTest.
   - Inspector scan as a Lambda action that polls Inspector v2 API for image findings, fails on Critical.
   - All artifacts stored in a per-pipeline S3 bucket with KMS encryption + 90-day lifecycle.
   - Pipeline events to EventBridge → SNS → Slack via Chatbot.
-- **Acceptance criteria**: Push to `services/user-service/**` on the monorepo's main branch triggers `pipeline-user-service-staging`, which runs all stages → image lands in ECR → `food-delivery-gitops` gets the bump commit → ArgoCD deploys to staging → smoke test passes.
+- **Acceptance criteria**: Push to `services/user-service/**` on the monorepo's main branch triggers `pipeline-user-service`, which runs all stages → image lands in ECR → `food-delivery-gitops` gets the bump commit → ArgoCD deploys to EKS → smoke test passes.
 - **Dependencies**: 8.2, 2.5
 
-### Step 8.4: Production deployment with manual approval + Argo Rollouts canary
-- [ ] **Objective**: Add the production deployment branch with manual approval and progressive canary.
+### Step 8.4: Manual approval gate + Argo Rollouts canary
+- [ ] **Objective**: Add a manual approval gate before deploy and progressive canary via Argo Rollouts.
 - **Files to create**:
-  - `platform-infra/envs/production/pipelines/identity-pipeline.tf`
   - `food-delivery-gitops/apps/user-service/overlays/production/rollout.yaml`
   - `food-delivery-gitops/apps/_argo-rollouts/install.yaml`
   - `food-delivery-gitops/apps/_argo-rollouts/analysis-template-error-rate.yaml`
 - **Key details**:
-  - CodePipeline manual approval action; SNS topic `production-deploy-approvals` notifies approvers via Slack and email.
-  - Approver IAM group `production-deployers` (audited via CloudTrail).
-  - Argo Rollouts `Rollout` replaces `Deployment` for production overlay; canary 10% → 50% → 100% with 5/10/0 minute pauses.
+  - CodePipeline manual approval action before the deploy stage; SNS topic `deploy-approvals` notifies via Slack and email.
+  - Approver IAM group `deployers` (audited via CloudTrail).
+  - Argo Rollouts `Rollout` replaces `Deployment`; canary 10% → 50% → 100% with 5/10/0 minute pauses.
   - AnalysisTemplate queries Prometheus for error rate; `errorRate > 0.01` aborts and rolls back automatically.
   - Auto-rollback also tied to CloudWatch alarm via Lambda hook (defense in depth).
-- **Acceptance criteria**: Promote user-service to production via approval. Canary progresses through 10/50/100. Inject errors during 50% phase → automated rollback.
+- **Acceptance criteria**: Deploy user-service via approval gate. Canary progresses through 10/50/100. Inject errors during 50% phase → automated rollback.
 - **Dependencies**: 8.3
 
 ### Step 8.5: Replicate pipelines for the remaining 4 v1 services
 - [ ] **Objective**: Use the Terraform module to create pipelines for the remaining 4 v1 services (product, basket, payment, order). The user-service pipeline already exists from the pilot. Each pipeline is one short module instantiation; the path-filter Lambda (Step 8.1) handles the trigger fan-out.
 - **Files to create**:
-  - `platform-infra/envs/staging/pipelines/product-pipeline.tf`
-  - `platform-infra/envs/staging/pipelines/basket-pipeline.tf`
-  - `platform-infra/envs/staging/pipelines/payment-pipeline.tf`
-  - `platform-infra/envs/staging/pipelines/order-pipeline.tf`
-  - `platform-infra/envs/production/pipelines/*.tf` (one per v1 service)
+  - `platform-infra/envs/production/pipelines/product-pipeline.tf`
+  - `platform-infra/envs/production/pipelines/basket-pipeline.tf`
+  - `platform-infra/envs/production/pipelines/payment-pipeline.tf`
+  - `platform-infra/envs/production/pipelines/order-pipeline.tf`
 - **Key details**:
   - Each `.tf` file is ~12 lines: instantiates the `service-pipeline` module from Step 8.3 with `service_name`, `service_path`, `has_kafka`, `has_database`, `has_grpc` flags.
   - **Payment** pipeline has a business-hours gate on production deploys (Lambda check before approval action) — payment failures hurt more during off-hours.
@@ -1363,6 +1327,7 @@ The build is split into **four versions**, each one shippable. The point of vers
   - All pipelines source from `food-delivery-platform` (monorepo); the path-filter Lambda determines which one(s) to start on a given commit.
   - **v2/v3/v4 services** get their pipelines added the same way when they ship — one short `.tf` file per new service. No new pipeline infrastructure work.
 - **Acceptance criteria**: All 5 v1 service pipelines visible in CodePipeline console. Pushing to `services/{any v1 service}/**` triggers the matching pipeline only. Pushing to `platform-shared-libs/**` triggers all 5.
+- **Dependencies**: 8.4
 - **Dependencies**: 8.4
 
 ### Step 8.6: Pipeline notifications + ArgoCD sync notifications
@@ -1374,7 +1339,7 @@ The build is split into **four versions**, each one shippable. The point of vers
   - `food-delivery-gitops/argocd/notifications/triggers.yaml`
 - **Key details**:
   - EventBridge rules match `aws.codepipeline` events; route to SNS topic by severity.
-  - AWS Chatbot configured with Slack workspace; `pipeline-events` channel for staging, `prod-deploys` for production.
+  - AWS Chatbot configured with Slack workspace; `pipeline-events` for CI builds, `prod-deploys` for approval gate and deploy notifications.
   - Failed prod pipeline → PagerDuty page on-call SRE.
   - ArgoCD Notifications service sends sync events: `OutOfSync` warning to Slack after 5 min, `Degraded` page to PagerDuty.
   - Weekly pipeline metrics report: deployment frequency, lead time, change failure rate, MTTR (DORA metrics) — generated by scheduled Lambda → email.
@@ -1385,13 +1350,13 @@ The build is split into **four versions**, each one shippable. The point of vers
 
 ## Phase 9: End-to-End Testing
 
-> Goal: automated test suites validate the three core flows (happy path, cancel, error) on every staging deploy. Load testing uncovers capacity limits before production traffic does.
+> Goal: automated test suites validate the three core flows (happy path, cancel, error) on every deploy. Load testing uncovers capacity limits before real traffic does.
 
 ### Step 9.0: Per-service test scaffolding (close audit §12)
 - [ ] **Objective**: Close the cross-cutting testability gap identified in `docs/API_AUDIT.md` §12. Every HTTP-exposing service gets controller-slice tests, repository-slice tests, and at least one happy-path service-layer test. The Saga end-to-end integration test comes in Step 9.1.
 - **Files to create** (per service that has HTTP endpoints — user, order, product, basket, kitchen, delivery, review, promotion):
   - `services/{name}/src/test/java/.../api/{Resource}ControllerTest.java` — `@WebMvcTest` per controller; covers happy path + validation errors + 4xx responses; mocks the service layer
-  - `services/{name}/src/test/java/.../domain/{Resource}RepositoryTest.java` — `@DataJpaTest` for JPA services; DynamoDB Enhanced Client tests with LocalStack for product and kitchen and review
+  - `services/{name}/src/test/java/.../domain/{Resource}RepositoryTest.java` — `@DataJpaTest` for JPA services (user, product, order, delivery, promotion); DynamoDB Enhanced Client tests with LocalStack for kitchen and review
   - `services/{name}/src/test/java/.../service/{Resource}ServiceTest.java` — happy path of the main service class with Mockito for dependencies
   - `services/{name}/src/test/java/.../config/IntegrationTestBase.java` — shared Testcontainers setup (Postgres, Redis, Kafka per service needs) reused across IT tests
 - **Key details**:
@@ -1406,7 +1371,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 11.5 (every per-service phase complete, audit gaps closed)
 
 ### Step 9.1: E2E happy path test (full order lifecycle)
-- [ ] **Objective**: Postman/Newman or k6 script that drives a full order from registration to delivery against staging.
+- [ ] **Objective**: Postman/Newman or k6 script that drives a full order from registration to delivery against EKS.
 - **Files to create**:
   - `e2e-tests/scenarios/01-happy-path.js` (k6)
   - `e2e-tests/lib/auth-helper.js`
@@ -1419,8 +1384,8 @@ The build is split into **four versions**, each one shippable. The point of vers
   - Each step has SLO assertions (p95 latency, max time-to-state)
   - Driver simulator polls the available-tasks endpoint and races; verifies only one driver wins
   - Reads order timeline from Order Service to verify all expected state transitions happened
-  - Runs as a CodePipeline post-deploy stage in every staging deploy
-- **Acceptance criteria**: Test passes consistently in staging. Failures clearly identify which service/step caused failure.
+  - Runs as a CodePipeline post-deploy stage after every deploy
+- **Acceptance criteria**: Test passes consistently. Failures clearly identify which service/step caused failure.
 - **Dependencies**: 11.4
 
 ### Step 9.2: E2E cancel and error flow tests
@@ -1435,7 +1400,7 @@ The build is split into **four versions**, each one shippable. The point of vers
   - Cancel-after-prepare: place order → kitchen accepts → cancel → assert 409
   - Payment failure: use Stripe test card `4000000000000341` (succeeds at first then chargeback) → trigger Stripe webhook for `charge.failed` via Stripe CLI → assert order state `FAILED` after compensation, all 4 compensations ack'd, kitchen ticket canceled, basket restored, customer notified
   - Each scenario also verifies CloudWatch logs and X-Ray trace contain expected trace IDs
-- **Acceptance criteria**: All three scenarios pass in staging. State transitions and side effects validated programmatically.
+- **Acceptance criteria**: All three scenarios pass. State transitions and side effects validated programmatically.
 - **Dependencies**: 14.1
 
 ### Step 9.3: Load testing with k6 + Distributed Load Testing on AWS
@@ -1465,7 +1430,7 @@ The build is split into **four versions**, each one shippable. The point of vers
   - `chaos/experiments/db-failover.json`
   - `chaos/runbook.md`
 - **Key details**:
-  - FIS templates target staging only initially, prod after confidence builds
+  - FIS templates run against EKS — schedule during low-traffic periods
   - Kill payment pod during active charge → verify retries succeed, no duplicate charges (idempotency works)
   - Inject 5s latency on Stripe → verify circuit breaker opens, fallback returns 503 (not timeout)
   - Network-partition Redis → verify Basket service degrades to 503 instead of hanging, cart data preserved on heal
@@ -1549,7 +1514,7 @@ The build is split into **four versions**, each one shippable. The point of vers
   - Incident response template: communication channels, roles (IC, scribe, comms), update cadence
   - Post-mortem template: timeline, contributing factors, action items with owners; blameless culture explicit
   - Launch sign-off requires checklist 100% complete, signed by Eng Lead + Product Lead + SRE Lead
-- **Acceptance criteria**: Checklist 100% complete. Two consecutive weeks of zero SEV1 incidents in staging soak. Production launch approved.
+- **Acceptance criteria**: Checklist 100% complete. Two consecutive weeks of zero SEV1 incidents. Production launch approved.
 - **Dependencies**: 10.3
 
 ---
@@ -1570,6 +1535,10 @@ The build is split into **four versions**, each one shippable. The point of vers
 - [ ] **Objective**: Spring Boot service backed by DynamoDB for tickets and capacity counters. Follow `docs/service-deploy-template.md` from v1 pilot.
 - **Files**: standard service skeleton per template. Tables: `tickets` (PK=`restaurantId`, SK=`ticketId`, GSI on `state`), `restaurant-capacity` (PK=`restaurantId`, attributes `active_count` atomic counter, `paused` boolean, `pause_threshold` default 20).
 - **Key details**: Ticket states `ACCEPTED`, `PREPARING`, `READY_FOR_PICKUP`, `CANCELED`. Outbox table on DDB (Streams-driven publisher via Lambda — first use of this pattern in v2; document it in the deploy template as a v2 addition).
+- **Infrastructure** (deferred from Step 0.5 — provision here when the service is built):
+  - Add to `platform-infra/envs/{env}/dynamodb.tf` using the `dynamodb-table` module from Step 3.1:
+    - `tickets`: PK=`ticket_id` (S), GSI on `restaurant_id` (S) → `created_at` (S), streams enabled, KMS CMK
+    - `outbox-kitchen`: PK=`event_id` (S), streams enabled (`NEW_AND_OLD_IMAGES`), KMS CMK
 - **Acceptance**: insert ticket, list by state, atomic counter increment work.
 - **Dependencies**: 1.4, 2.7
 
@@ -1644,7 +1613,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 14.1
 
 ### Step 14.3: v2 production launch
-- [ ] **Objective**: Production deploy of kitchen + delivery + the expanded order saga. Soak in staging 7 days. SLO green for the new flows. Update launch checklist with v2 considerations.
+- [ ] **Objective**: Deploy kitchen + delivery + the expanded order saga. Soak 7 days. SLO green for the new flows. Update launch checklist with v2 considerations.
 - **Dependencies**: 14.2
 
 ---
@@ -1659,6 +1628,10 @@ The build is split into **four versions**, each one shippable. The point of vers
 
 ### Step 15.1: review-service skeleton + DynamoDB schema
 - [ ] **Objective**: Spring Boot service. DDB tables: `reviews` (PK=`REVIEW#{type}#{entityId}`, SK=`{orderId}#{userId}`, GSI on `(userId, submittedAt)`), `review-aggregates` (PK=`REVIEW_AGG#{type}#{entityId}`, attrs: count, sum, avg, histogram, lastUpdated).
+- **Infrastructure** (deferred from Step 0.5 — provision here when the service is built):
+  - Add to `platform-infra/envs/{env}/dynamodb.tf` using the `dynamodb-table` module:
+    - `reviews`: PK=`review_id` (S), streams enabled (`NEW_AND_OLD_IMAGES`), KMS CMK
+    - `review-aggregates`: PK=`restaurant_id` (S), KMS CMK
 - **Dependencies**: 1.4, 2.7
 
 ### Step 15.2: ORDER_DELIVERED listener + REST CRUD endpoints
@@ -1704,10 +1677,12 @@ The build is split into **four versions**, each one shippable. The point of vers
 
 ### Step 17.3: Idempotency + send paths (SES email + SNS Mobile Push)
 - [ ] **Objective**: Conditional write to `notification-idempotency` DDB table with `attribute_not_exists(idem_key)`. SES `SendEmail` for email. SNS Mobile Push for FCM/APNS. EventRouter maps event types to (template, channel, recipient).
+- **Infrastructure** (deferred from Step 0.5 — provision here when the service is built):
+  - Add to `platform-infra/envs/{env}/dynamodb.tf`: `notification-idempotency` table: PK=`idempotency_key` (S), TTL attribute=`expires_at` (7-day expiry), KMS CMK
 - **Dependencies**: 17.2
 
 ### Step 17.4: CodePipeline for Lambda (SAM-based) + deploy
-- [ ] **Objective**: Lambda-specific pipeline variant (uses `service-pipeline-lambda` Terraform module from v3 addendum). CodeDeploy canary alias 10%/5min staging, 10%/10min prod. Auto-rollback on `Errors` alarm.
+- [ ] **Objective**: Lambda-specific pipeline variant (uses `service-pipeline-lambda` Terraform module from v3 addendum). CodeDeploy canary alias 10% for 10 minutes. Auto-rollback on `Errors` alarm.
 - **Dependencies**: 17.3, 8.6
 
 ---
@@ -1746,7 +1721,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 18.4
 
 ### Step 19.2: Migrate staging traffic
-- [ ] **Objective**: Flag staging to 100% v2. Soak 7 days. Validate dashboards show no regressions. Validate refund flow against Stripe test mode.
+- [ ] **Objective**: Flag traffic to 100% v2. Soak 7 days. Validate dashboards show no regressions. Validate refund flow against Stripe test mode.
 - **Dependencies**: 19.1
 
 ### Step 19.3: Migrate production traffic (canary)
@@ -1795,7 +1770,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 | 11 — Kitchen Service | 5 | 5 | Sequential, but can run alongside Phase 12 |
 | 12 — Delivery Service | 5 | 5 | Sequential, can run alongside Phase 11 |
 | 13 — Expand order-service saga | 3 | 3 | Depends on 11.2 + 12.4 |
-| 14 — v2 wrap-up | 3 | 3 | Sequential — staging soak + prod launch |
+| 14 — v2 wrap-up | 3 | 3 | Sequential — soak + launch |
 | **v2 total** | **16** | **~16 sessions** | **~3–4 weeks** |
 
 ### Version 3 — Engagement (review + promotion + notification)
@@ -1812,7 +1787,7 @@ The build is split into **four versions**, each one shippable. The point of vers
 | Phase | Steps | Approx Sessions | Parallel Possible? |
 |---|---|---|---|
 | 18 — payment-service v2 (full) | 4 | 4 | Sequential |
-| 19 — Migrate traffic to v2 | 3 | 3 | Sequential — staging soak + prod canary |
+| 19 — Migrate traffic to v2 | 3 | 3 | Sequential — soak + canary |
 | 20 — v4 wrap-up | 2 | 2 | Sequential — retire v1, docs |
 | **v4 total** | **9** | **~9 sessions** | **~2–3 weeks** |
 

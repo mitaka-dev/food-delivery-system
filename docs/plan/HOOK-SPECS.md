@@ -657,7 +657,7 @@ def check_topic_provisioned(event_type: str) -> bool:
     topic = f"{domain}-events"
 
     # Search Terraform for topic provisioning
-    msk_tf = Path("platform-infra/envs/staging/messaging.tf")
+    msk_tf = Path("platform-infra/envs/production/messaging.tf")
     if msk_tf.exists() and topic in msk_tf.read_text():
         return True
     return False
@@ -1281,14 +1281,14 @@ if __name__ == "__main__":
 ## 14. block-cross-account-mistake
 
 ### Purpose
-Subtle category of mistake: editing `envs/staging/*.tf` while authenticated as the production AWS account, then running `terraform apply`. The IaC code says staging; the AWS context says prod; result is unexpected.
+Subtle category of mistake: editing `envs/production/*.tf` while authenticated as the wrong AWS account, then running `terraform apply`. The IaC context says production; the AWS caller identity should match.
 
 ### When it fires
 Pre-tool-use, before `bash` tool calls involving `terraform apply` or `terraform destroy`.
 
 ### What it checks
 1. Inspect the working directory of the tool call.
-2. Determine the env from the path (`envs/staging/`, `envs/production/`, etc.).
+2. Determine the env from the path (`envs/production/`, `envs/shared/`, etc.).
 3. Determine the AWS account from `aws sts get-caller-identity`.
 4. If the env-vs-account mismatch occurs, block and prompt.
 
@@ -1300,7 +1300,6 @@ Pre-tool-use, before `bash` tool calls involving `terraform apply` or `terraform
 import json, sys, subprocess, re
 
 ENV_TO_ACCOUNT = {
-    "staging": "111111111111",
     "production": "123456789012",
     "shared": None,  # any account
     "load-test": "222222222222",
@@ -1348,7 +1347,7 @@ if __name__ == "__main__":
 
 ### Edge cases
 - **Custom env folders**: `envs/dev-{name}` (developer-specific). Skip the check.
-- **Multi-account staging**: each developer has their own staging account. Use a regex on env names instead of a hardcoded mapping.
+- **Developer accounts**: if multiple developers have personal AWS accounts, use a regex on env names instead of a hardcoded mapping.
 - **`shared` env**: cross-account ECR, IAM. The current account doesn't matter — usually shared resources are managed from a specific account, but it's environment-dependent. Mark as "any account allowed".
 
 ### Exit codes
