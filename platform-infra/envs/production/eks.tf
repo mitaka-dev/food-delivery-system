@@ -3,7 +3,7 @@ module "eks" {
 
   cluster_name       = "food-delivery-production-eks"
   environment        = "production"
-  kubernetes_version = "1.30"
+  kubernetes_version = "1.32"
 
   vpc_id             = module.vpc.vpc_id
   private_subnet_ids = module.vpc.private_subnet_ids
