@@ -567,31 +567,178 @@ The build is split into **four versions**, each one shippable. The point of vers
 - **Dependencies**: 1.1
 
 ### Step 1.4: observability and outbox packages in common-libs
-- [ ] **Objective**: Provide structured JSON logging, OTel trace propagation, and the outbox publisher abstraction (Postgres + Kafka destination + SQS destination).
-- **Files to create**:
-  - `common-libs/src/main/java/.../obs/LoggingAutoConfig.java`
-  - `common-libs/src/main/java/.../obs/TraceContextFilter.java`
-  - `common-libs/src/main/java/.../obs/KafkaTracePropagator.java`
-  - `common-libs/src/main/java/.../obs/SqsTracePropagator.java`
-  - `common-libs/src/main/resources/logback-spring.xml`
-  - `common-libs/src/main/java/.../outbox/OutboxEvent.java` (entity)
-  - `common-libs/src/main/java/.../outbox/OutboxRepository.java` (interface)
-  - `common-libs/src/main/java/.../outbox/JdbcOutboxRepository.java`
-  - `common-libs/src/main/java/.../outbox/OutboxPublisher.java` (Spring `@Scheduled`)
-  - `common-libs/src/main/java/.../outbox/KafkaOutboxDispatcher.java`
-  - `common-libs/src/main/java/.../outbox/SqsOutboxDispatcher.java`
-  - `common-libs/src/main/java/.../outbox/OutboxRouter.java` (decides Kafka vs SQS based on row's `destination_type`)
-  - `common-libs/src/main/resources/db/migration/V1__outbox_table.sql`
-- **Key details**:
-  - Outbox row schema includes `destination_type` (`KAFKA` | `SQS`) and `destination` (topic name or queue ARN). The publisher reads, the router dispatches, the dispatcher publishes.
-  - Structured JSON logs include `traceId`, `spanId`, `userId`, `service`, `version`, `level`, `logger`, `message`.
-  - OTel SDK auto-config sends spans to AWS X-Ray (via OTel collector) — see Phase 7.3.
-  - Trace context propagated via HTTP `traceparent` header, **Kafka headers** (`traceparent`), and SQS message attributes (`traceId`).
-  - Outbox publisher: `@Scheduled(fixedDelay=500)`, batch size 100, `SELECT ... FOR UPDATE SKIP LOCKED`. Uses **virtual threads** for parallel dispatch within a batch.
-  - Kafka dispatcher uses Glue Schema Registry serializer for Avro payloads.
-  - Configurable per-event-type destination map via Spring properties (e.g., `outbox.routing.USER_CREATED.kafka.topic=identity-events`).
-  - Metrics: outbox lag (oldest unprocessed row age), publish success/failure counters per destination type.
-- **Acceptance criteria**: An importing service with the outbox V1 migration sees rows it inserts get published to the correct destination (Kafka or SQS) within ~1 second. Trace context propagates through Kafka headers verified end-to-end in an integration test.
+- [x] **Objective**: Provide structured JSON logging, OTel trace propagation, and reliable event
+  publication via **Spring Modulith's transactional outbox** (replaces the custom
+  `OutboxEvent`/`JdbcOutboxRepository`/`OutboxPublisher`/`OutboxRouter`/dispatcher hierarchy
+  from the previous attempt — delete all of that before starting this step).
+
+#### Why Spring Modulith instead of hand-rolled JDBC
+
+The previous implementation built `SELECT … FOR UPDATE SKIP LOCKED` polling, a custom dispatcher
+hierarchy, and a virtual-thread batch publisher from scratch. Spring Modulith's
+`spring-modulith-events-jdbc` does all of that — and more — out of the box:
+- `event_publication` table (managed schema), `@Scheduled` poller, retry on failure, dead-letter
+  tracking, and exactly the `SELECT … SKIP LOCKED` concurrency semantics, without a line of polling
+  code in this repo.
+- `spring-modulith-events-kafka` externalizes events to Kafka topics.
+- `spring-modulith-events-sqs` externalizes to SQS queue URLs.
+- Incomplete publications are automatically resubmitted on restart.
+
+#### Files to create / modify
+
+**Platform BOM** (`platform-bom/pom.xml`):
+```xml
+<!-- Check https://github.com/spring-projects/spring-modulith/releases for the version
+     aligned with Spring Boot 4.0.x (expect spring-modulith 2.0.x for Boot 4) -->
+<dependency>
+    <groupId>org.springframework.modulith</groupId>
+    <artifactId>spring-modulith-bom</artifactId>
+    <version>${spring-modulith.version}</version>
+    <type>pom</type>
+    <scope>import</scope>
+</dependency>
+```
+
+**`common-libs/pom.xml`** — replace the custom outbox deps with:
+```xml
+<!-- Core event publication registry (JDBC persistence) -->
+<dependency>
+    <groupId>org.springframework.modulith</groupId>
+    <artifactId>spring-modulith-events-jdbc</artifactId>
+    <optional>true</optional>
+</dependency>
+
+<!-- Kafka externalizer — routes @Externalized events to Kafka topics -->
+<dependency>
+    <groupId>org.springframework.modulith</groupId>
+    <artifactId>spring-modulith-events-kafka</artifactId>
+    <optional>true</optional>
+</dependency>
+
+<!-- SQS externalizer — routes @Externalized events to SQS queues -->
+<dependency>
+    <groupId>org.springframework.modulith</groupId>
+    <artifactId>spring-modulith-events-sqs</artifactId>
+    <optional>true</optional>
+</dependency>
+```
+Keep the `obs/` package deps (micrometer-tracing, logstash-logback-encoder, spring-web optional, etc.) unchanged.
+
+**Observability package** (`obs/`) — identical to what was planned originally:
+- `common-libs/src/main/java/.../obs/LoggingAutoConfig.java`
+- `common-libs/src/main/java/.../obs/TraceContextFilter.java` (X-User-Id → MDC)
+- `common-libs/src/main/java/.../obs/KafkaTracePropagator.java`
+- `common-libs/src/main/java/.../obs/SqsTracePropagator.java`
+- `common-libs/src/main/resources/logback-obs-json.xml` (shared `<included>` fragment)
+
+**Outbox configuration** (`outbox/`) — only configuration, no custom implementation:
+- `common-libs/src/main/java/.../outbox/OutboxPublicationConfig.java`
+
+  This single class wires Spring Modulith's `EventExternalizationConfiguration` with the
+  platform's routing rules (Kafka vs SQS) and propagates trace context:
+
+  ```java
+  @Configuration
+  public class OutboxPublicationConfig {
+
+      /**
+       * Routes events annotated with @Externalized to the correct broker.
+       * Services override this bean with @ConditionalOnMissingBean if they need
+       * per-event routing logic beyond what the annotation provides.
+       *
+       * Trace context: Spring Modulith passes the serialized event through Jackson.
+       * For Kafka, KafkaTracePropagator.inject() should be wired into a
+       * ProducerInterceptor on the KafkaTemplate so traceparent is injected
+       * for every outbound message automatically — no per-event code needed.
+       */
+      @Bean
+      @ConditionalOnMissingBean
+      EventExternalizationConfiguration eventExternalizationConfiguration() {
+          return EventExternalizationConfiguration.externalizing()
+              // Only externalize events explicitly marked with @Externalized
+              .select(EventExternalizationConfiguration.annotatedAsExternalized())
+              .build();
+      }
+
+      /**
+       * Resubmits incomplete publications on startup (handles crash recovery).
+       * Runs once at startup and then on a configurable schedule.
+       */
+      @Bean
+      ApplicationListener<ApplicationStartedEvent> resubmitIncompletePublications(
+              IncompleteEventPublications publications) {
+          return event -> publications.resubmitIncompletePublicationsOlderThan(Duration.ofSeconds(10));
+      }
+  }
+  ```
+
+**How services use it** (key pattern to document at the top of `OutboxPublicationConfig.java`):
+
+```java
+// 1. Mark the event for externalization (Kafka topic name or SQS queue URL)
+@Externalized("user-events")            // → Kafka topic "user-events"
+@Externalized("https://sqs.../queue")  // → SQS queue URL
+public record UserCreatedEvent(UUID userId, String email, String role) {}
+
+// 2. Publish inside a @Transactional method — Spring Modulith persists it atomically
+@Transactional
+public void register(CreateUserRequest req) {
+    User user = userRepository.save(new User(req));
+    events.publishEvent(new UserCreatedEvent(user.getId(), user.getEmail(), user.getRole()));
+    // ↑ stored in event_publication table in the SAME transaction; delivered after commit
+}
+```
+
+**Schema**: Spring Modulith creates the `event_publication` table automatically via its bundled
+Liquibase/Flyway scripts when the starter is on the classpath. No `V1__outbox_table.sql` needed.
+Configure the schema creation mode: `spring.modulith.events.jdbc.schema-initialization.enabled=true`.
+
+**Trace context propagation**:
+Spring Modulith delivers events after transaction commit using a `@TransactionalEventListener`
+internally. For Kafka delivery, register a `ProducerInterceptor` bean that calls
+`KafkaTracePropagator.inject()` using the MDC context captured at publish time. For SQS,
+register a `MessageAttributesContributor` bean.
+
+#### Key configuration properties (add to `application.yaml` template for services)
+
+```yaml
+spring:
+  modulith:
+    events:
+      jdbc:
+        schema-initialization:
+          enabled: true          # auto-creates event_publication table
+      republish-outstanding-events-on-restart: true
+  kafka:
+    producer:
+      # Outbox events are plain JSON; Glue Schema Registry is optional for the outbox topic
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+```
+
+#### Best practices checklist
+
+- [ ] Event classes are **immutable records** annotated with `@Externalized("topic-or-url")`.
+- [ ] Event classes live in the **same module** as the aggregate that emits them (not in common-libs).
+      common-libs only provides the outbox configuration; events are per-service.
+- [ ] `events.publishEvent(...)` is called **inside** a `@Transactional` method, never outside.
+- [ ] `republish-outstanding-events-on-restart=true` so a pod restart doesn't lose in-flight events.
+- [ ] Consumers are **idempotent** (at-least-once delivery guarantee from Spring Modulith).
+- [ ] For Kafka: configure `spring.kafka.producer.acks=all` and
+      `spring.kafka.producer.enable-idempotence=true` in every service.
+- [ ] For SQS: use FIFO queues with a `MessageGroupId` derived from the aggregate ID for ordering.
+- [ ] Register a `IncompleteEventPublications` resubmission job (handled in `OutboxPublicationConfig`).
+- [ ] Expose `management.endpoints.web.exposure.include=modulith` to see publication state via Actuator.
+
+#### Acceptance criteria
+- An importing service with `spring-modulith-events-jdbc` + `spring-modulith-events-kafka` on the
+  classpath can call `events.publishEvent(new UserCreatedEvent(...))` inside a `@Transactional`
+  method, and the event arrives in the configured Kafka topic within ~1 second.
+- After an artificial crash (context restart mid-publication), the incomplete event is
+  redelivered on the next startup.
+- Trace context (`traceparent` header) is present in the published Kafka message.
+- All verified with a Testcontainers integration test (PostgreSQL + Kafka) in `common-libs`.
+
 - **Dependencies**: 1.1, 1.2
 
 ---

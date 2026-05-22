@@ -17,7 +17,19 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         // Exclude Redis auto-config (Spring Boot 4 class name) so no Redis connection is
         // attempted; IdempotencyKeyAspect's @ConditionalOnBean(StringRedisTemplate) then skips it.
-        properties = "spring.autoconfigure.exclude=org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration")
+        properties = {
+                "spring.autoconfigure.exclude=" +
+                "org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration," +
+                "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration," +
+                "org.springframework.boot.kafka.autoconfigure.KafkaAutoConfiguration," +
+                // Spring Modulith auto-configurations (not needed in this test)
+                "org.springframework.modulith.core.config.ApplicationModuleInitializerRuntimeVerification," +
+                "org.springframework.modulith.events.config.EventExternalizationAutoConfiguration," +
+                "org.springframework.modulith.events.config.EventPublicationAutoConfiguration," +
+                "org.springframework.modulith.events.jdbc.JdbcEventPublicationAutoConfiguration," +
+                "org.springframework.modulith.events.kafka.KafkaEventExternalizerConfiguration," +
+                "org.springframework.modulith.events.kafka.KafkaJacksonConfiguration"
+        })
 class ResilienceAutoConfigTest {
 
     @SpringBootApplication

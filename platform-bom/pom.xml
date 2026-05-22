@@ -19,8 +19,10 @@
         <grpc.version>1.71.0</grpc.version>
         <testcontainers.version>1.21.0</testcontainers.version>
         <flyway.version>10.22.0</flyway.version>
+        <spring-modulith.version>2.0.5</spring-modulith.version>
         <springdoc.version>3.0.3</springdoc.version>
         <loki4j.version>2.0.3</loki4j.version>
+        <logstash-logback-encoder.version>8.0</logstash-logback-encoder.version>
         <jjwt.version>0.12.6</jjwt.version>
         <platform.version>1.0.0</platform.version>
     </properties>
@@ -71,6 +73,15 @@
                 <scope>import</scope>
             </dependency>
 
+            <!-- Spring Modulith -->
+            <dependency>
+                <groupId>org.springframework.modulith</groupId>
+                <artifactId>spring-modulith-bom</artifactId>
+                <version>${spring-modulith.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
             <!-- Testcontainers -->
             <dependency>
                 <groupId>org.testcontainers</groupId>
@@ -113,6 +124,13 @@
                 <groupId>com.github.loki4j</groupId>
                 <artifactId>loki-logback-appender</artifactId>
                 <version>${loki4j.version}</version>
+            </dependency>
+
+            <!-- Structured JSON logging -->
+            <dependency>
+                <groupId>net.logstash.logback</groupId>
+                <artifactId>logstash-logback-encoder</artifactId>
+                <version>${logstash-logback-encoder.version}</version>
             </dependency>
 
             <!-- JWT -->

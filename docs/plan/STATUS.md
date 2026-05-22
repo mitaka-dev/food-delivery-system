@@ -4,7 +4,7 @@
 
 ## Where We Are
 
-- **Progress:** 13 / 97 steps complete
+- **Progress:** 14 / 97 steps complete
 - **Active branch:** `build/phase-1`
 - **Environment:** Single env — `platform-infra/envs/production/` only.
 - **Repo layout:** Services under `services/`. GitOps repo at `../food-delivery-gitops/`.
@@ -15,8 +15,8 @@ All infrastructure provisioned: VPC, EKS Fargate, Aurora PostgreSQL Serverless v
 
 ## Phase 1 — In Progress
 
-- **Done:** 1.1 (root reactor + platform-bom), 1.2 (events, DTOs, exceptions in `common-libs`), 1.3 (resilience package — Resilience4j + `@Idempotent`)
-- **Next:** 1.4 — observability + outbox packages in `common-libs`
+- **Done:** 1.1 (root reactor + platform-bom), 1.2 (events, DTOs, exceptions in `common-libs`), 1.3 (resilience package — Resilience4j + `@Idempotent`), 1.4 (observability + outbox via Spring Modulith)
+- **Next:** 1.5 — first service skeleton (user-service)
 
 ## Key Files
 

@@ -1,1 +1,3 @@
 food.delivery.system.common.libs.resilience.ResilienceAutoConfig
+food.delivery.system.common.libs.obs.LoggingAutoConfig
+food.delivery.system.common.libs.outbox.OutboxPublicationConfig

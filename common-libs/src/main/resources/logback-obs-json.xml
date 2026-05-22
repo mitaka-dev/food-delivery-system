@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Shared logback include for structured JSON output.
+  Services include this with: <include resource="logback-obs-json.xml"/>
+  Then reference the JSON_CONSOLE appender in their root logger.
+
+  JSON fields emitted per line:
+    timestamp, level, logger, message, service, traceId, spanId, userId
+  (traceId/spanId come from MDC when micrometer-tracing-bridge-otel is active)
+-->
+<included>
+    <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <fieldNames>
+                <!-- rename built-in fields to match our log schema -->
+                <timestamp>timestamp</timestamp>
+                <version>[ignore]</version>
+                <levelValue>[ignore]</levelValue>
+                <logger>logger</logger>
+                <thread>[ignore]</thread>
+            </fieldNames>
+            <!-- service name resolved at runtime from Spring's application name -->
+            <customFields>{"service":"${spring.application.name:-unknown}"}</customFields>
+            <!-- include MDC fields: traceId, spanId, userId -->
+            <includeMdcKeyName>traceId</includeMdcKeyName>
+            <includeMdcKeyName>spanId</includeMdcKeyName>
+            <includeMdcKeyName>userId</includeMdcKeyName>
+        </encoder>
+    </appender>
+</included>

@@ -81,6 +81,47 @@
 			<optional>true</optional>
 		</dependency>
 
+		<!-- Micrometer tracing abstraction — conditional: obs beans activate only when present -->
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-tracing</artifactId>
+			<optional>true</optional>
+		</dependency>
+
+		<!-- Structured JSON logging via Logstash Logback Encoder -->
+		<dependency>
+			<groupId>net.logstash.logback</groupId>
+			<artifactId>logstash-logback-encoder</artifactId>
+			<optional>true</optional>
+		</dependency>
+
+		<!-- Spring Modulith — JDBC-backed event publication (events-jdbc + events-jackson + core).
+		     The starter is required: events-jdbc alone has no EventSerializer, causing a wiring
+		     failure. optional: only activates when on the classpath. -->
+		<dependency>
+			<groupId>org.springframework.modulith</groupId>
+			<artifactId>spring-modulith-starter-jdbc</artifactId>
+			<optional>true</optional>
+		</dependency>
+
+		<!-- Spring Modulith — Kafka externalizer: routes @Externalized events to Kafka topics -->
+		<dependency>
+			<groupId>org.springframework.modulith</groupId>
+			<artifactId>spring-modulith-events-kafka</artifactId>
+			<optional>true</optional>
+		</dependency>
+
+		<!-- AWS SDK SQS — for SqsTracePropagator (obs/ package). Optional: only services
+		     that consume SQS messages need this on their classpath. -->
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>sqs</artifactId>
+			<optional>true</optional>
+		</dependency>
+
+		<!-- spring-modulith-events-sqs does not exist in the 2.0.x BOM (not ported to
+		     Spring Boot 4). SQS externalization is handled at the service level. -->
+
 		<!-- Test -->
 		<dependency>
 			<groupId>com.fasterxml.jackson.datatype</groupId>
@@ -90,6 +131,53 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<!-- spring-boot-starter-jdbc provides DataSource + JdbcTemplate auto-configuration + HikariCP
+		     in tests (used by OutboxPublisherIT). Test scope only — keeps main compile classpath free
+		     of Boot DataSource auto-config. ResilienceAutoConfigTest excludes DataSourceAutoConfiguration
+		     since it has no database configured. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-jdbc</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+		<!-- Spring Modulith test utilities (@ApplicationModuleTest, scenario DSL) -->
+		<dependency>
+			<groupId>org.springframework.modulith</groupId>
+			<artifactId>spring-modulith-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+		<!-- Spring Boot 4 moved Kafka auto-config into spring-boot-kafka (separate artifact from
+		     spring-boot-autoconfigure). Required in test scope so KafkaAutoConfiguration registers
+		     and OutboxPublicationTest's context can auto-create KafkaTemplate. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-kafka</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+		<!-- Testcontainers for OutboxPublicationIT -->
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>junit-jupiter</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>postgresql</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>kafka</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
