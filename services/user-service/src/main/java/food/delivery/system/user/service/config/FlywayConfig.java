@@ -11,6 +11,8 @@ import org.springframework.boot.jdbc.SchemaManagementProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+
 import javax.sql.DataSource;
 import java.util.Arrays;
 
@@ -25,8 +27,11 @@ import java.util.Arrays;
  *     @DependsOn("flywayMigrator") to entityManagerFactory at startup
  *  3. flywaySchemaManagementProvider — signals Boot's HibernateJpaConfiguration
  *     that schema is externally managed (suppresses create-drop default on embedded DBs)
+ *
+ * Set spring.flyway.enabled=false to skip migrations (used in tests with embedded H2).
  */
 @Configuration
+@ConditionalOnProperty(name = "spring.flyway.enabled", havingValue = "true", matchIfMissing = true)
 public class FlywayConfig {
 
     @Bean
