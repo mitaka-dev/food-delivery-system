@@ -755,7 +755,7 @@ spring:
 > The remainder of Phase 7 and Phase 8 — X-Ray, SLO alerts, canary rollouts, replicating pipelines to the other v1 services — happens after all v1 services exist, in the original phase order.
 
 ### Step 2.1: user-service skeleton + DB schema
-- [ ] **Objective**: Create the Spring Boot project, configure DB connection, run initial migrations.
+- [x] **Objective**: Create the Spring Boot project, configure DB connection, run initial migrations.
 - **Files to create**:
   - `services/user-service/pom.xml`
   - `services/user-service/src/main/java/.../UserApplication.java`

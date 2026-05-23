@@ -1,0 +1,39 @@
+version: 0.2
+
+env:
+  variables:
+    SERVICE_NAME: user-service
+    SERVICE_PATH: services/user-service
+  parameter-store:
+    ECR_REPO_URI: /food-delivery/ecr/user-service/uri
+    AWS_ACCOUNT_ID: /food-delivery/aws-account-id
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPO_URI
+      - echo Configuring CodeArtifact Maven repository...
+      - export CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token --domain food-delivery-platform --domain-owner $AWS_ACCOUNT_ID --query authorizationToken --output text)
+      - IMAGE_TAG=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c1-7)
+
+  build:
+    commands:
+      - echo Build started on $(date)
+      - ./mvnw verify -pl $SERVICE_PATH -am -s settings.xml -Pcodeartifact
+      - echo Building Docker image...
+      - docker build --build-arg SERVICE_PATH=$SERVICE_PATH -t $SERVICE_NAME:$IMAGE_TAG $SERVICE_PATH
+
+  post_build:
+    commands:
+      - echo Pushing image to ECR...
+      - docker tag $SERVICE_NAME:$IMAGE_TAG $ECR_REPO_URI:$IMAGE_TAG
+      - docker tag $SERVICE_NAME:$IMAGE_TAG $ECR_REPO_URI:latest
+      - docker push $ECR_REPO_URI:$IMAGE_TAG
+      - docker push $ECR_REPO_URI:latest
+      - echo Writing image definitions for ArgoCD image updater...
+      - printf '[{"name":"%s","imageUri":"%s"}]' $SERVICE_NAME $ECR_REPO_URI:$IMAGE_TAG > imagedefinitions.json
+
+artifacts:
+  files:
+    - imagedefinitions.json

@@ -35,9 +35,9 @@ public class UserController {
     })
     @PostMapping
     public ResponseEntity<String> register(@RequestBody UserRegistrationDto dto) {
-        log.info("Registration request received for username='{}', role={}", dto.username(), dto.role());
+        log.info("Registration request received for email='{}', role={}", dto.email(), dto.role());
         userService.registerUser(dto);
-        log.info("Registration accepted for username='{}' — status=PENDING, awaiting Saga confirmation", dto.username());
+        log.info("Registration accepted for email='{}' — status=PENDING, awaiting Saga confirmation", dto.email());
         return ResponseEntity.ok("User created and is being processed (PENDING)...");
     }
 }

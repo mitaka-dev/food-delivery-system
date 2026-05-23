@@ -36,14 +36,14 @@ public class UserService {
     public void registerUser(UserRegistrationDto dto) {
         User user = new User();
         user.setId(UUID.randomUUID());
-        user.setUsername(dto.username());
-        user.setPassword(passwordEncoder.encode(dto.password())); // Хеширане
+        user.setEmail(dto.email());
+        user.setPasswordHash(passwordEncoder.encode(dto.password()));
         user.setRole(dto.role());
         user.setStatus(UserStatus.PENDING);
 
         userRepository.save(user);
 
-        UserCreatedEvent event = new UserCreatedEvent(user.getId(), dto.email(), user.getUsername(), user.getRole());
+        UserCreatedEvent event = new UserCreatedEvent(user.getId(), user.getEmail(), user.getEmail(), user.getRole());
 
         log.info("Sending user creation event to Kafka: {}", user.getId());
         kafkaTemplate.send(USER_TOPIC, user.getId().toString(), event);

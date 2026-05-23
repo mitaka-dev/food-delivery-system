@@ -11,11 +11,19 @@ spring:
     username: ${POSTGRES_USER:user}
     password: ${POSTGRES_PASSWORD:password}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration/user-service
 
   jpa:
     hibernate:
-      ddl-auto: update
-    show-sql: true
+      ddl-auto: validate
+    show-sql: false
 
   # Kafka Configuration
   kafka:
