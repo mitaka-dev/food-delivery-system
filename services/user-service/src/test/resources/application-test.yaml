@@ -17,6 +17,13 @@ spring:
       auto-startup: false
     admin:
       auto-create: false
+  modulith:
+    events:
+      jdbc:
+        # Let Spring Modulith create the v2 event_publication schema in H2
+        # (Flyway is disabled in unit tests, so there's no Flyway-managed table)
+        schema-initialization:
+          enabled: true
 
 springdoc:
   api-docs:

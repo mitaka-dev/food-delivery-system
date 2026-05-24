@@ -25,6 +25,13 @@ spring:
       ddl-auto: validate
     show-sql: false
 
+  modulith:
+    events:
+      jdbc:
+        schema-initialization:
+          enabled: false   # event_publication table created by V3__outbox.sql
+      republish-outstanding-events-on-restart: true
+
   # Kafka Configuration
   kafka:
     bootstrap-servers: kafka:29092

@@ -778,7 +778,7 @@ spring:
 - **Dependencies**: 1.4
 
 ### Step 2.2: Registration with outbox event
-- [ ] **Objective**: Implement `POST /v1/auth/register` that writes user + outbox row in one transaction.
+- [x] **Objective**: Implement `POST /v1/auth/register` that writes user + outbox row in one transaction.
 - **Files to create**:
   - `services/user-service/src/main/java/.../api/AuthController.java`
   - `services/user-service/src/main/java/.../service/UserRegistrationService.java`
@@ -793,9 +793,9 @@ spring:
   - Reject duplicate email with `409` and clear error code
   - Generate UUID v7 for user IDs (time-ordered)
   - Default role on registration: CUSTOMER
-  - Tests use Testcontainers for PostgreSQL + LocalStack for SNS
+  - Tests use Testcontainers for PostgreSQL + Testcontainers Kafka (not LocalStack SNS — UserCreatedEvent delivered to `user-events` Kafka topic)
   - **Audit-driven (audit §1, §6 for user-service)**: `RegisterRequest` is a Java record with `@NotBlank @Size(min=3, max=50)` on `username`, `@NotBlank @Size(min=8)` on `password`, `@Email @NotBlank` on `email`, `@NotNull` on `role`. Controller parameter is annotated `@Valid`. Endpoint returns a typed `RegisterResponse` record (NOT `ResponseEntity<String>`) with at minimum `{ userId, username, status, message }`. Returns **HTTP 202 Accepted** — registration is async (user transitions from PENDING via the USER_CREATED event flow).
-- **Acceptance criteria**: After registration, `outbox` table contains 1 row with `event_type=USER_CREATED`. After ~1s the row's `processed_at` is set and the event lands in the configured SNS topic (verified by Testcontainers LocalStack). Validation rejects empty `username`, blank `password`, malformed `email` with HTTP 400 + field-level error details. Success response is HTTP 202 with a typed `RegisterResponse` body.
+- **Acceptance criteria**: After registration, `event_publication` table contains 1 row with `event_type` matching `UserCreatedEvent`. After ~15s the row's `completion_date` is set and the event has been sent to the `user-events` Kafka topic (verified by Testcontainers KafkaContainer). Validation rejects empty `username`, blank `password`, malformed `email` with HTTP 400 + field-level error details. Success response is HTTP 202 with a typed `RegisterResponse` body.
 - **Dependencies**: 2.1
 
 ### Step 2.3: Login + JWT issuance + refresh token rotation

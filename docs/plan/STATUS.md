@@ -1,10 +1,10 @@
 # Project Status
 
-**Last updated:** 2026-05-23
+**Last updated:** 2026-05-24
 
 ## Where We Are
 
-- **Progress:** 15 / 97 steps complete
+- **Progress:** 16 / 97 steps complete
 - **Active branch:** `build/phase-1`
 - **Environment:** Single env — `platform-infra/envs/production/` only.
 - **Repo layout:** Services under `services/`. GitOps repo at `../food-delivery-gitops/`.
@@ -19,8 +19,8 @@ All infrastructure provisioned: VPC, EKS Fargate, Aurora PostgreSQL Serverless v
 
 ## Phase 2 — In Progress
 
-- **Done:** 2.1 (user-service skeleton: Flyway migrations V1–V3, HikariCP, profile-split YAMLs, Corretto Dockerfile, FlywayConfig for Boot 4.0, `GET /actuator/health` UP)
-- **Next:** 2.2 — Registration with outbox event (`POST /v1/auth/register`, Spring Modulith outbox, `UserCreatedEvent`)
+- **Done:** 2.1 (user-service skeleton: Flyway migrations V1–V3, HikariCP, profile-split YAMLs, Corretto Dockerfile, FlywayConfig for Boot 4.0, `GET /actuator/health` UP), 2.2 (`POST /api/v1/auth/register`, transactional outbox via Spring Modulith `event_publication` + `UserEventPublisher`, UUID v7, 30/30 tests pass)
+- **Next:** 2.3 — Login + JWT issuance + refresh token rotation
 
 ## Key Files
 

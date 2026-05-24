@@ -53,6 +53,7 @@ class UserRepositoryTest {
     private User buildUser(String email) {
         User user = new User();
         user.setId(UUID.randomUUID());
+        user.setUsername(email.split("@")[0]);
         user.setEmail(email);
         user.setPasswordHash("hashed");
         user.setRole(UserRole.USER);

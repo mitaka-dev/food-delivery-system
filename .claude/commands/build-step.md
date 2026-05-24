@@ -28,7 +28,7 @@ Workflow:
    - Flip `- [ ]` to `- [x]` for this step in `BUILD-PLAN.md`.
    - Update `docs/plan/STATUS.md`: increment the step count, move this step
      into the Completed Steps section, and update the Next Step block to
-     reflect the next unchecked step.
+     reflect the next unchecked step - check which is the next step from the plan.
 
 If $ARGUMENTS doesn't match a step ID in `BUILD-PLAN.md` (e.g. a
 free-form feature request), stop and suggest `/feature-dev` instead.

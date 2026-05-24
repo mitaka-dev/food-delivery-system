@@ -3,8 +3,11 @@ package food.delivery.system.user.service.controller;
 import food.delivery.system.user.service.record.AuthResponse;
 import food.delivery.system.user.service.record.LoginDto;
 import food.delivery.system.user.service.record.RefreshTokenDto;
+import food.delivery.system.user.service.record.RegisterRequest;
+import food.delivery.system.user.service.record.RegisterResponse;
 import food.delivery.system.user.service.service.JwtService;
 import food.delivery.system.user.service.service.UserDetailsServiceImpl;
+import food.delivery.system.user.service.service.UserRegistrationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -12,6 +15,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -21,23 +25,39 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "Authentication", description = "Login, token refresh, and logout")
+@Tag(name = "Authentication", description = "Registration, login, token refresh, and logout")
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
 
     private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
+    private final UserRegistrationService registrationService;
     private final AuthenticationManager authenticationManager;
     private final UserDetailsServiceImpl userDetailsService;
     private final JwtService jwtService;
 
-    public AuthController(AuthenticationManager authenticationManager,
+    public AuthController(UserRegistrationService registrationService,
+                          AuthenticationManager authenticationManager,
                           UserDetailsServiceImpl userDetailsService,
                           JwtService jwtService) {
+        this.registrationService = registrationService;
         this.authenticationManager = authenticationManager;
         this.userDetailsService = userDetailsService;
         this.jwtService = jwtService;
+    }
+
+    @Operation(summary = "Register", description = "Create a CUSTOMER account. Returns 202 Accepted — the account is PENDING until the USER_CREATED event flow completes.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "202", description = "Registration accepted, account is PENDING"),
+            @ApiResponse(responseCode = "400", description = "Validation error — field-level details in body"),
+            @ApiResponse(responseCode = "409", description = "Email already registered")
+    })
+    @PostMapping("/register")
+    public ResponseEntity<RegisterResponse> register(@Valid @RequestBody RegisterRequest request) {
+        log.info("Registration request for email='{}'", request.email());
+        RegisterResponse response = registrationService.register(request);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
     }
 
     /**

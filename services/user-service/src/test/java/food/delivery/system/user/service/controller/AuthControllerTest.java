@@ -1,10 +1,14 @@
 package food.delivery.system.user.service.controller;
 
+import food.delivery.system.user.service.exception.DuplicateEmailException;
 import food.delivery.system.user.service.record.AuthResponse;
 import food.delivery.system.user.service.record.LoginDto;
 import food.delivery.system.user.service.record.RefreshTokenDto;
+import food.delivery.system.user.service.record.RegisterRequest;
+import food.delivery.system.user.service.record.RegisterResponse;
 import food.delivery.system.user.service.service.JwtService;
 import food.delivery.system.user.service.service.UserDetailsServiceImpl;
+import food.delivery.system.user.service.service.UserRegistrationService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -18,6 +22,7 @@ import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -30,6 +35,9 @@ public class AuthControllerTest {
 
     @InjectMocks
     private AuthController controller;
+
+    @Mock
+    private UserRegistrationService registrationService;
 
     @Mock
     private AuthenticationManager authenticationManager;
@@ -102,5 +110,28 @@ public class AuthControllerTest {
 
         verify(jwtService).revokeRefreshToken("user@test.com");
         assertThat(response.getStatusCode().value()).isEqualTo(204);
+    }
+
+    @Test
+    void register_validRequest_returns202WithBody() {
+        UUID id = UUID.randomUUID();
+        when(registrationService.register(any())).thenReturn(
+                new RegisterResponse(id, "alice", "PENDING", "Registration accepted — account is pending activation."));
+
+        ResponseEntity<RegisterResponse> response = controller.register(
+                new RegisterRequest("alice", "alice@example.com", "securepass"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(202);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().username()).isEqualTo("alice");
+        assertThat(response.getBody().status()).isEqualTo("PENDING");
+    }
+
+    @Test
+    void register_duplicateEmail_propagatesException() {
+        when(registrationService.register(any())).thenThrow(new DuplicateEmailException("alice@example.com"));
+
+        assertThrows(DuplicateEmailException.class,
+                () -> controller.register(new RegisterRequest("alice", "alice@example.com", "securepass")));
     }
 }
