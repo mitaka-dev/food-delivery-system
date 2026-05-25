@@ -820,7 +820,7 @@ spring:
 - **Dependencies**: 2.2
 
 ### Step 2.4: User profile endpoints + security filters
-- [ ] **Objective**: Implement `GET /v1/users/me`, `PATCH /v1/users/me` and the JWT validation filter chain.
+- [x] **Objective**: Implement `GET /v1/users/me`, `PATCH /v1/users/me` and the JWT validation filter chain.
 - **Files to create**:
   - `services/user-service/src/main/java/.../api/UserController.java`
   - `services/user-service/src/main/java/.../service/UserProfileService.java`
