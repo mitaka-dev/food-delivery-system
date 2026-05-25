@@ -6,6 +6,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -18,6 +20,22 @@ import java.util.List;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @ExceptionHandler({BadCredentialsException.class, UsernameNotFoundException.class})
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public ApiError handleAuthFailure(RuntimeException ex, HttpServletRequest req) {
+        log.warn("Authentication failed for request {}: {}", req.getRequestURI(), ex.getMessage());
+        return new ApiError(
+                HttpStatus.UNAUTHORIZED.value(),
+                "Unauthorized",
+                "AUTHENTICATION_FAILED",
+                "Invalid credentials",
+                Instant.now(),
+                req.getRequestURI(),
+                null,
+                null
+        );
+    }
 
     @ExceptionHandler(DuplicateEmailException.class)
     @ResponseStatus(HttpStatus.CONFLICT)

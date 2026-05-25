@@ -32,4 +32,5 @@ springdoc:
     enabled: false
 
 jwt:
-  secret: test-secret-key-for-context-tests-only-xxxxxxxx
+  access-token-expiration: 900000
+  refresh-token-expiration: 2592000000

@@ -799,7 +799,7 @@ spring:
 - **Dependencies**: 2.1
 
 ### Step 2.3: Login + JWT issuance + refresh token rotation
-- [ ] **Objective**: Implement `POST /v1/auth/login`, `POST /v1/auth/refresh`, `POST /v1/auth/logout`.
+- [x] **Objective**: Implement `POST /v1/auth/login`, `POST /v1/auth/refresh`, `POST /v1/auth/logout`.
 - **Files to create**:
   - `services/user-service/src/main/java/.../service/AuthenticationService.java`
   - `services/user-service/src/main/java/.../service/JwtIssuer.java`

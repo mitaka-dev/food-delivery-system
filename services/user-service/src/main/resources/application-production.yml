@@ -32,6 +32,13 @@ spring:
       ssl:
         enabled: true
 
+aws:
+  region: ${AWS_REGION:us-east-1}
+  secrets:
+    jwt-key-arn: ${JWT_PRIVATE_KEY_SECRET_ARN}
+  ssm:
+    jwt-public-key-path: ${JWT_PUBLIC_KEY_SSM_PATH:/food-delivery/user-service/jwt-public-key}
+
 management:
   tracing:
     sampling:

@@ -3,7 +3,6 @@ package food.delivery.system.user.service.service;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,57 +10,48 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
-import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
+import java.security.KeyPair;
+import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.util.Date;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 @Service
 public class JwtService {
 
     private static final Logger log = LoggerFactory.getLogger(JwtService.class);
-    private static final String REFRESH_TOKEN_PREFIX = "refresh_token:";
-
-    @Value("${jwt.secret}")
-    private String secret;
+    private static final String JTI_DENYLIST_PREFIX = "jti_denylist:";
 
     @Value("${jwt.access-token-expiration}")
     private long accessTokenExpiration;
 
-    @Value("${jwt.refresh-token-expiration}")
-    private long refreshTokenExpiration;
-
+    private final PrivateKey privateKey;
+    private final PublicKey publicKey;
     private final StringRedisTemplate redisTemplate;
 
-    public JwtService(StringRedisTemplate redisTemplate) {
+    public JwtService(KeyPair keyPair, StringRedisTemplate redisTemplate) {
+        this.privateKey = keyPair.getPrivate();
+        this.publicKey = keyPair.getPublic();
         this.redisTemplate = redisTemplate;
     }
 
     // ── Token Generation ──────────────────────────────────────────────────────
 
     public String generateAccessToken(UserDetails userDetails) {
-        return buildToken(userDetails, accessTokenExpiration, "access");
-    }
-
-    public String generateRefreshToken(UserDetails userDetails) {
-        String token = buildToken(userDetails, refreshTokenExpiration, "refresh");
-        storeRefreshToken(userDetails.getUsername(), token);
-        return token;
-    }
-
-    private String buildToken(UserDetails userDetails, long expiration, String tokenType) {
         String role = userDetails.getAuthorities().stream()
                 .findFirst()
                 .map(a -> a.getAuthority().replace("ROLE_", ""))
                 .orElse("USER");
 
         return Jwts.builder()
+                .id(UUID.randomUUID().toString())
                 .subject(userDetails.getUsername())
                 .claim("role", role)
-                .claim("type", tokenType)
+                .claim("type", "access")
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + expiration))
-                .signWith(getSigningKey())
+                .expiration(new Date(System.currentTimeMillis() + accessTokenExpiration))
+                .signWith(privateKey, Jwts.SIG.RS256)
                 .compact();
     }
 
@@ -79,55 +69,44 @@ public class JwtService {
         }
     }
 
-    public boolean isRefreshTokenValid(String username, String token) {
-        try {
-            Claims claims = extractAllClaims(token);
-            String storedToken = redisTemplate.opsForValue().get(REFRESH_TOKEN_PREFIX + username);
-            return claims.getSubject().equals(username)
-                    && !claims.getExpiration().before(new Date())
-                    && "refresh".equals(claims.get("type"))
-                    && token.equals(storedToken);
-        } catch (JwtException | IllegalArgumentException e) {
-            log.warn("Invalid refresh token for user {}: {}", username, e.getMessage());
-            return false;
-        }
-    }
-
-    // ── Token Extraction ──────────────────────────────────────────────────────
+    // ── Claim Extraction ──────────────────────────────────────────────────────
 
     public String extractUsername(String token) {
         return extractAllClaims(token).getSubject();
     }
 
+    public String extractJti(String token) {
+        return extractAllClaims(token).getId();
+    }
+
+    public Date extractExpiration(String token) {
+        return extractAllClaims(token).getExpiration();
+    }
+
     private Claims extractAllClaims(String token) {
         return Jwts.parser()
-                .verifyWith(getSigningKey())
+                .verifyWith(publicKey)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
     }
 
-    // ── Redis Refresh Token Storage ───────────────────────────────────────────
+    // ── JTI Denylist (logout) ─────────────────────────────────────────────────
 
-    private void storeRefreshToken(String username, String token) {
+    public void addJtiToDenylist(String jti, long remainingMillis) {
         redisTemplate.opsForValue().set(
-                REFRESH_TOKEN_PREFIX + username,
-                token,
-                refreshTokenExpiration,
+                JTI_DENYLIST_PREFIX + jti,
+                "1",
+                remainingMillis,
                 TimeUnit.MILLISECONDS
         );
     }
 
-    public void revokeRefreshToken(String username) {
-        redisTemplate.delete(REFRESH_TOKEN_PREFIX + username);
+    public boolean isJtiDenylisted(String jti) {
+        return Boolean.TRUE.equals(redisTemplate.hasKey(JTI_DENYLIST_PREFIX + jti));
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private SecretKey getSigningKey() {
-        byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
-        return Keys.hmacShaKeyFor(keyBytes);
-    }
 
     public long getAccessTokenExpiration() {
         return accessTokenExpiration;

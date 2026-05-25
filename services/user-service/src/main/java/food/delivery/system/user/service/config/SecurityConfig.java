@@ -55,11 +55,12 @@ public class SecurityConfig {
                 // Stateless — no HTTP session, every request must carry a JWT
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // Public: auth endpoints (register, login, refresh, logout) + API docs
-                        .requestMatchers("/api/v1/auth/**",
+                        // Public: register, login, refresh + API docs
+                        .requestMatchers("/api/v1/auth/register", "/api/v1/auth/login",
+                                "/api/v1/auth/refresh",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html",
                                 "/actuator/health", "/actuator/info").permitAll()
-                        // Everything else requires a valid JWT
+                        // logout requires a valid JWT so we can extract the jti for the denylist
                         .anyRequest().authenticated()
                 )
                 // Return 401 instead of redirecting to a login page

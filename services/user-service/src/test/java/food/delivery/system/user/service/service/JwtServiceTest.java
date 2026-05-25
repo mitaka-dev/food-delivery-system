@@ -3,7 +3,6 @@ package food.delivery.system.user.service.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -13,21 +12,20 @@ import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.startsWith;
-import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-public class JwtServiceTest {
-
-    @InjectMocks
-    private JwtService jwtService;
+class JwtServiceTest {
 
     @Mock
     private StringRedisTemplate redisTemplate;
@@ -35,17 +33,17 @@ public class JwtServiceTest {
     @Mock
     private ValueOperations<String, String> valueOps;
 
-    private static final String SECRET = "test-secret-key-for-unit-tests-only-xxxxxxxxxxxxxxxx";
-    private static final long ACCESS_EXPIRY  = 900_000L;
-    private static final long REFRESH_EXPIRY = 604_800_000L;
-
+    private JwtService jwtService;
     private UserDetails testUser;
 
     @BeforeEach
-    void setUp() {
-        ReflectionTestUtils.setField(jwtService, "secret", SECRET);
-        ReflectionTestUtils.setField(jwtService, "accessTokenExpiration", ACCESS_EXPIRY);
-        ReflectionTestUtils.setField(jwtService, "refreshTokenExpiration", REFRESH_EXPIRY);
+    void setUp() throws Exception {
+        KeyPairGenerator gen = KeyPairGenerator.getInstance("RSA");
+        gen.initialize(2048);
+        KeyPair keyPair = gen.generateKeyPair();
+
+        jwtService = new JwtService(keyPair, redisTemplate);
+        ReflectionTestUtils.setField(jwtService, "accessTokenExpiration", 900_000L);
 
         testUser = new User(
                 "user@example.com",
@@ -59,30 +57,20 @@ public class JwtServiceTest {
         String token = jwtService.generateAccessToken(testUser);
 
         assertThat(jwtService.extractUsername(token)).isEqualTo("user@example.com");
-        // Validate: access type means isAccessTokenValid returns true
         assertThat(jwtService.isAccessTokenValid(token, testUser)).isTrue();
     }
 
     @Test
-    void generateRefreshToken_storesTokenInRedis() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOps);
+    void generateAccessToken_embedsJti() {
+        String token = jwtService.generateAccessToken(testUser);
 
-        jwtService.generateRefreshToken(testUser);
-
-        verify(valueOps).set(startsWith("refresh_token:"), anyString(), anyLong(), any());
+        assertThat(jwtService.extractJti(token)).isNotBlank();
     }
 
     @Test
     void isAccessTokenValid_validToken_returnsTrue() {
         String token = jwtService.generateAccessToken(testUser);
         assertThat(jwtService.isAccessTokenValid(token, testUser)).isTrue();
-    }
-
-    @Test
-    void isAccessTokenValid_wrongType_returnsFalse() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOps);
-        String refreshToken = jwtService.generateRefreshToken(testUser);
-        assertThat(jwtService.isAccessTokenValid(refreshToken, testUser)).isFalse();
     }
 
     @Test
@@ -93,32 +81,31 @@ public class JwtServiceTest {
     }
 
     @Test
-    void isRefreshTokenValid_tokenMatchesRedis_returnsTrue() {
+    void addJtiToDenylist_storesInRedis() {
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
-        String token = jwtService.generateRefreshToken(testUser);
-        when(valueOps.get("refresh_token:user@example.com")).thenReturn(token);
 
-        assertThat(jwtService.isRefreshTokenValid("user@example.com", token)).isTrue();
+        jwtService.addJtiToDenylist("some-jti", 60_000L);
+
+        verify(valueOps).set(startsWith("jti_denylist:"), anyString(), anyLong(), any());
     }
 
     @Test
-    void isRefreshTokenValid_tokenNotInRedis_returnsFalse() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOps);
-        String token = jwtService.generateRefreshToken(testUser);
-        when(valueOps.get("refresh_token:user@example.com")).thenReturn(null);
+    void isJtiDenylisted_keyExists_returnsTrue() {
+        when(redisTemplate.hasKey("jti_denylist:test-jti")).thenReturn(true);
 
-        assertThat(jwtService.isRefreshTokenValid("user@example.com", token)).isFalse();
+        assertThat(jwtService.isJtiDenylisted("test-jti")).isTrue();
+    }
+
+    @Test
+    void isJtiDenylisted_keyAbsent_returnsFalse() {
+        when(redisTemplate.hasKey("jti_denylist:missing")).thenReturn(false);
+
+        assertThat(jwtService.isJtiDenylisted("missing")).isFalse();
     }
 
     @Test
     void extractUsername_returnsSubject() {
         String token = jwtService.generateAccessToken(testUser);
         assertThat(jwtService.extractUsername(token)).isEqualTo("user@example.com");
-    }
-
-    @Test
-    void revokeRefreshToken_deletesKeyFromRedis() {
-        jwtService.revokeRefreshToken("user@example.com");
-        verify(redisTemplate).delete("refresh_token:user@example.com");
     }
 }
