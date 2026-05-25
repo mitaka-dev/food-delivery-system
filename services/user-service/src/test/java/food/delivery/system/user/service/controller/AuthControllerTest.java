@@ -1,8 +1,6 @@
 package food.delivery.system.user.service.controller;
 
-import food.delivery.system.user.service.exception.AccountLockedException;
-import food.delivery.system.user.service.exception.DuplicateEmailException;
-import food.delivery.system.user.service.exception.InvalidTokenException;
+import food.delivery.system.user.service.exception.EmailAlreadyTakenException;
 import food.delivery.system.user.service.record.AuthResponse;
 import food.delivery.system.user.service.record.LoginDto;
 import food.delivery.system.user.service.record.RefreshTokenDto;
@@ -53,17 +51,6 @@ class AuthControllerTest {
         assertThat(response.getBody()).isEqualTo(AUTH_RESPONSE);
     }
 
-    @Test
-    void login_accountLocked_returns429WithRetryAfterHeader() {
-        var mockReq = org.mockito.Mockito.mock(jakarta.servlet.http.HttpServletRequest.class);
-        when(mockReq.getRequestURI()).thenReturn("/api/v1/auth/login");
-
-        ResponseEntity<?> response = controller.handleLockout(new AccountLockedException(900), mockReq);
-
-        assertThat(response.getStatusCode().value()).isEqualTo(429);
-        assertThat(response.getHeaders().getFirst("Retry-After")).isEqualTo("900");
-    }
-
     // ── Refresh ───────────────────────────────────────────────────────────────
 
     @Test
@@ -74,17 +61,6 @@ class AuthControllerTest {
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).isEqualTo(AUTH_RESPONSE);
-    }
-
-    @Test
-    void refresh_invalidToken_returns401() {
-        var mockReq = org.mockito.Mockito.mock(jakarta.servlet.http.HttpServletRequest.class);
-        when(mockReq.getRequestURI()).thenReturn("/api/v1/auth/refresh");
-
-        ResponseEntity<?> response = controller.handleInvalidToken(
-                new InvalidTokenException("Revoked"), mockReq);
-
-        assertThat(response.getStatusCode().value()).isEqualTo(401);
     }
 
     // ── Logout ────────────────────────────────────────────────────────────────
@@ -116,9 +92,9 @@ class AuthControllerTest {
 
     @Test
     void register_duplicateEmail_propagatesException() {
-        when(registrationService.register(any())).thenThrow(new DuplicateEmailException("alice@example.com"));
+        when(registrationService.register(any())).thenThrow(new EmailAlreadyTakenException("alice@example.com"));
 
-        assertThrows(DuplicateEmailException.class,
+        assertThrows(EmailAlreadyTakenException.class,
                 () -> controller.register(new RegisterRequest("alice", "alice@example.com", "securepass")));
     }
 }

@@ -1,10 +1,10 @@
 package food.delivery.system.user.service.service;
 
 import food.delivery.system.user.service.entity.User;
+import food.delivery.system.user.service.exception.UserNotFoundException;
 import food.delivery.system.user.service.record.UpdateProfileRequest;
 import food.delivery.system.user.service.record.UserProfileResponse;
 import food.delivery.system.user.service.repository.UserRepository;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,7 +42,7 @@ public class UserProfileService {
 
     private User findByEmail(String email) {
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
+                .orElseThrow(() -> new UserNotFoundException(email));
     }
 
     private UserProfileResponse toResponse(User user) {

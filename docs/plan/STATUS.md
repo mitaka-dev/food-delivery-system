@@ -4,7 +4,7 @@
 
 ## Where We Are
 
-- **Progress:** 18 / 97 steps complete
+- **Progress:** 20 / 97 steps complete
 - **Active branch:** `build/phase-1`
 - **Environment:** Single env — `platform-infra/envs/production/` only.
 - **Repo layout:** Services under `services/`. GitOps repo at `../food-delivery-gitops/`.
@@ -19,8 +19,8 @@ All infrastructure provisioned: VPC, EKS Fargate, Aurora PostgreSQL Serverless v
 
 ## Phase 2 — In Progress
 
-- **Done:** 2.1 (user-service skeleton: Flyway migrations V1–V3, HikariCP, profile-split YAMLs, Corretto Dockerfile, FlywayConfig for Boot 4.0, `GET /actuator/health` UP), 2.2 (`POST /api/v1/auth/register`, transactional outbox via Spring Modulith `event_publication` + `UserEventPublisher`, UUID v7, 30/30 tests pass), 2.3 (RS256 JWT issuance, DB-backed hashed refresh tokens, family invalidation, brute-force lockout, jti denylist on logout, 38/38 tests pass), 2.4 (`GET /api/v1/users/me` + `PATCH /api/v1/users/me`, `@EnableMethodSecurity` + `@PreAuthorize`, RFC 6750 `WWW-Authenticate` on 401, V6 phone migration, 8/8 IT tests pass)
-- **Next:** 2.5 — K8s manifests + ArgoCD application
+- **Done:** 2.1 (user-service skeleton: Flyway migrations V1–V3, HikariCP, profile-split YAMLs, Corretto Dockerfile, FlywayConfig for Boot 4.0, `GET /actuator/health` UP), 2.2 (`POST /api/v1/auth/register`, transactional outbox via Spring Modulith `event_publication` + `UserEventPublisher`, UUID v7, 30/30 tests pass), 2.3 (RS256 JWT issuance, DB-backed hashed refresh tokens, family invalidation, brute-force lockout, jti denylist on logout, 38/38 tests pass), 2.4 (`GET /api/v1/users/me` + `PATCH /api/v1/users/me`, `@EnableMethodSecurity` + `@PreAuthorize`, RFC 6750 `WWW-Authenticate` on 401, V6 phone migration, 8/8 IT tests pass), 2.5 (IRSA role + SM secrets in Terraform, Kustomize base+overlay, ArgoCD Application — all 9 K8s resources render cleanly, `terraform validate` passes; end-to-end deploy requires live cluster), 2.6 (`GlobalExceptionHandler` — all error paths return `ApiError` envelope; `EmailAlreadyTakenException` + `UserNotFoundException` typed exceptions; `AccountLockedException`/`InvalidTokenException` moved from controller-local to global; 7/7 `GlobalExceptionHandlerIT` tests pass)
+- **Next:** 2.7 — Consolidate deploy template (pilot checkpoint)
 
 ## Key Files
 

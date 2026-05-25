@@ -4,7 +4,7 @@ import food.delivery.system.common.libs.enums.UserRole;
 import food.delivery.system.common.libs.records.UserCreatedEvent;
 import food.delivery.system.user.service.entity.User;
 import food.delivery.system.user.service.enums.UserStatus;
-import food.delivery.system.user.service.exception.DuplicateEmailException;
+import food.delivery.system.user.service.exception.EmailAlreadyTakenException;
 import food.delivery.system.user.service.record.RegisterRequest;
 import food.delivery.system.user.service.record.RegisterResponse;
 import food.delivery.system.user.service.repository.UserRepository;
@@ -36,7 +36,7 @@ public class UserRegistrationService {
     @Transactional
     public RegisterResponse register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.email())) {
-            throw new DuplicateEmailException(request.email());
+            throw new EmailAlreadyTakenException(request.email());
         }
 
         User user = new User();

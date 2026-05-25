@@ -1,8 +1,5 @@
 package food.delivery.system.user.service.controller;
 
-import food.delivery.system.common.libs.api.ApiError;
-import food.delivery.system.user.service.exception.AccountLockedException;
-import food.delivery.system.user.service.exception.InvalidTokenException;
 import food.delivery.system.user.service.record.AuthResponse;
 import food.delivery.system.user.service.record.LoginDto;
 import food.delivery.system.user.service.record.RefreshTokenDto;
@@ -14,15 +11,12 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.time.Instant;
 
 @Tag(name = "Authentication", description = "Registration, login, token refresh, and logout")
 @RestController
@@ -89,38 +83,4 @@ public class AuthController {
         return ResponseEntity.noContent().build();
     }
 
-    // ── Exception handlers ────────────────────────────────────────────────────
-
-    @ExceptionHandler(AccountLockedException.class)
-    public ResponseEntity<ApiError> handleLockout(AccountLockedException ex, HttpServletRequest req) {
-        log.warn("Login blocked — account locked: {}", ex.getMessage());
-        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
-                .body(new ApiError(
-                        HttpStatus.TOO_MANY_REQUESTS.value(),
-                        "Too Many Requests",
-                        "ACCOUNT_LOCKED",
-                        ex.getMessage(),
-                        Instant.now(),
-                        req.getRequestURI(),
-                        null,
-                        null
-                ));
-    }
-
-    @ExceptionHandler(InvalidTokenException.class)
-    public ResponseEntity<ApiError> handleInvalidToken(InvalidTokenException ex, HttpServletRequest req) {
-        log.warn("Token operation rejected: {}", ex.getMessage());
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(new ApiError(
-                        HttpStatus.UNAUTHORIZED.value(),
-                        "Unauthorized",
-                        "INVALID_TOKEN",
-                        ex.getMessage(),
-                        Instant.now(),
-                        req.getRequestURI(),
-                        null,
-                        null
-                ));
-    }
 }

@@ -3,7 +3,7 @@ package food.delivery.system.user.service.service;
 import food.delivery.system.common.libs.enums.UserRole;
 import food.delivery.system.user.service.entity.User;
 import food.delivery.system.user.service.enums.UserStatus;
-import food.delivery.system.user.service.exception.DuplicateEmailException;
+import food.delivery.system.user.service.exception.EmailAlreadyTakenException;
 import food.delivery.system.user.service.record.RegisterRequest;
 import food.delivery.system.user.service.record.RegisterResponse;
 import food.delivery.system.user.service.repository.UserRepository;
@@ -112,13 +112,13 @@ class UserRegistrationServiceIT {
     }
 
     @Test
-    void register_duplicateEmail_throwsDuplicateEmailException() {
+    void register_duplicateEmail_throwsEmailAlreadyTakenException() {
         var first = new RegisterRequest("charlie", "charlie@example.com", "securepass123");
         registrationService.register(first);
 
         var duplicate = new RegisterRequest("charlie2", "charlie@example.com", "anotherpass456");
         assertThatThrownBy(() -> registrationService.register(duplicate))
-                .isInstanceOf(DuplicateEmailException.class)
+                .isInstanceOf(EmailAlreadyTakenException.class)
                 .hasMessageContaining("charlie@example.com");
     }
 }

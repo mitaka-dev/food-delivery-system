@@ -837,7 +837,7 @@ spring:
 - **Dependencies**: 2.3
 
 ### Step 2.5: K8s manifests + ArgoCD application
-- [ ] **Objective**: Wire user-service into the GitOps repo so ArgoCD deploys it to EKS.
+- [x] **Objective**: Wire user-service into the GitOps repo so ArgoCD deploys it to EKS.
 - **Files to create**:
   - `food-delivery-gitops/apps/user-service/base/deployment.yaml`
   - `food-delivery-gitops/apps/user-service/base/service.yaml`
@@ -860,7 +860,7 @@ spring:
 - **Dependencies**: 0.11, 2.4
 
 ### Step 2.6: Address user-service audit gaps
-- [ ] **Objective**: Close the audit gaps identified in `docs/API_AUDIT.md` for user-service: global exception handler, consistent error envelope, return-type fix. (The `@Valid` work and the typed-response fix from §1/§6 were already addressed in Step 2.2.)
+- [x] **Objective**: Close the audit gaps identified in `docs/API_AUDIT.md` for user-service: global exception handler, consistent error envelope, return-type fix. (The `@Valid` work and the typed-response fix from §1/§6 were already addressed in Step 2.2.)
 - **Files to create**:
   - `services/user-service/src/main/java/.../exception/GlobalExceptionHandler.java`
   - `services/user-service/src/main/java/.../exception/UserServiceExceptions.java` (typed exceptions: `UserNotFoundException`, `EmailAlreadyTakenException`, `InvalidCredentialsException`, etc.)
