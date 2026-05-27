@@ -11,3 +11,5 @@ spring:
     show-sql: false
   kafka:
     bootstrap-servers: localhost:9092
+  flyway:
+    enabled: false

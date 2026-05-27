@@ -52,6 +52,12 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <argLine>@{argLine} -XX:+EnableDynamicAgentLoading</argLine>
+                    <includes>
+                        <include>**/*Test.java</include>
+                        <include>**/*Tests.java</include>
+                        <include>**/*IT.java</include>
+                        <include>**/Test*.java</include>
+                    </includes>
                 </configuration>
             </plugin>
             <plugin>

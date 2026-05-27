@@ -904,7 +904,7 @@ spring:
 > Goal: a working product/menu service with cache-aside, image upload via pre-signed URLs, gRPC verification endpoint, and the public search API.
 
 ### Step 3.1: product-service — Aurora wiring + Flyway migrations + test coverage
-- [ ] **Objective**: Prepare the existing product-service for AWS deployment — wire Aurora PostgreSQL via the production Spring profile and add Flyway schema migrations replacing the `ddl-auto: update` used locally.
+- [x] **Objective**: Prepare the existing product-service for AWS deployment — wire Aurora PostgreSQL via the production Spring profile and add Flyway schema migrations replacing the `ddl-auto: update` used locally.
 - **Files to create/edit**:
   - `services/product-service/src/main/resources/application-production.yml` (Aurora datasource via `${DB_URL}`, credentials from Secrets Manager wired at Step 0.11)
   - `services/product-service/src/main/resources/db/migration/V1__create_products.sql`
