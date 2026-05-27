@@ -2,14 +2,17 @@
 description: Execute a build step from BUILD-PLAN.md
 argument-hint: <step-id, or omit for next unchecked>
 ---
-
+This command have to be executed in plan mode, if you're not in plan mode
+swith to plan mode or ask me to switch, if you are in plan mode - continue.
 You're starting work on a build step from `docs/plan/BUILD-PLAN.md`.
 
 Step ID: $ARGUMENTS
 
 The project status (loaded via SessionStart hook) tells you the next
 planned step and last completed step. If $ARGUMENTS is empty, use the
-next planned step.
+next planned step. Create a plan based on steps from the file, but dont
+start to implement it. First I want to read the plan and approve it then
+you can start with the implementation.
 
 Workflow:
 

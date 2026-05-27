@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""
+Post-tool-use hook: auto-format
+
+After Claude Code edits a file, run the appropriate formatter silently.
+Never blocks — formatting failures are logged but don't fail the hook.
+"""
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+SKIP_DIRS = {"target", "node_modules", ".git", "generated-sources", "generated"}
+
+
+def is_generated(path: str) -> bool:
+    parts = Path(path).parts
+    return any(d in SKIP_DIRS for d in parts)
+
+
+def run(cmd: list[str], cwd: str | None = None) -> bool:
+    try:
+        result = subprocess.run(cmd, capture_output=True, cwd=cwd, timeout=30)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def format_file(path: str) -> None:
+    if not os.path.exists(path) or is_generated(path):
+        return
+
+    ext = Path(path).suffix.lower()
+
+    if ext == ".java":
+        # Find nearest pom.xml to scope spotless to that module
+        d = str(Path(path).parent)
+        while d and d != "/":
+            if os.path.exists(os.path.join(d, "pom.xml")):
+                # Use -DspotlessFiles to scope to just this file (faster than full module)
+                run(["./mvnw", "-q", "spotless:apply",
+                     f"-DspotlessFiles={path}", "-DskipTests"],
+                    cwd=d)
+                return
+            d = str(Path(d).parent)
+
+    elif ext in (".tf", ".tfvars"):
+        run(["terraform", "fmt", path])
+
+    elif ext in (".yaml", ".yml"):
+        if run(["which", "yamlfmt"], cwd="/"):
+            run(["yamlfmt", path])
+        elif run(["which", "prettier"], cwd="/"):
+            run(["prettier", "--write", "--parser=yaml", path])
+
+    elif ext == ".json":
+        if run(["which", "prettier"], cwd="/"):
+            run(["prettier", "--write", "--parser=json", path])
+
+    elif ext == ".proto":
+        if run(["which", "buf"], cwd="/"):
+            run(["buf", "format", "-w", path])
+
+    elif ext == ".sh":
+        if run(["which", "shfmt"], cwd="/"):
+            run(["shfmt", "-w", "-i", "2", "-ci", path])
+
+    elif ext == ".py":
+        if run(["which", "ruff"], cwd="/"):
+            run(["ruff", "format", path])
+
+
+def main():
+    try:
+        inp = json.load(sys.stdin)
+    except Exception:
+        sys.exit(0)
+
+    tool = inp.get("tool_name", inp.get("tool", ""))
+    if tool not in {"Edit", "Write", "str_replace", "create_file"}:
+        sys.exit(0)
+
+    tool_input = inp.get("tool_input", {})
+    path = (tool_input.get("file_path")
+            or tool_input.get("path")
+            or tool_input.get("file"))
+
+    if path:
+        format_file(path)
+
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

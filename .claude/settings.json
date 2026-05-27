@@ -22,6 +22,31 @@
           {
             "type": "command",
             "command": "bash -c 'cd \"$(git rev-parse --show-toplevel)\" && python3 .claude/hooks/pre-tool-use/confirm-data-mutation'"
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel)\" && python3 .claude/hooks/pre-tool-use/block-cross-account-mistake'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel)\" && python3 .claude/hooks/post-tool-use/auto-format'"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel)\" && bash .claude/hooks/session-end/commit-progress-marker'"
           }
         ]
       }

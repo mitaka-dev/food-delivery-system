@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""
+Pre-tool-use hook: block-cross-account-mistake
+
+Fires before every Bash tool call. Blocks `terraform apply/destroy` inside
+envs/production/ when the active AWS account doesn't match the expected
+production account ID.
+"""
+import json
+import sys
+import re
+import subprocess
+
+# Map env directory name → expected AWS account ID
+ENV_TO_ACCOUNT = {
+    "production": "123456789012",   # TODO: replace with real production account ID
+}
+
+
+def get_current_account() -> str | None:
+    try:
+        result = subprocess.run(
+            ["aws", "sts", "get-caller-identity",
+             "--query", "Account", "--output", "text"],
+            capture_output=True, text=True, timeout=5
+        )
+        account = result.stdout.strip()
+        return account if account else None
+    except Exception:
+        return None
+
+
+def main():
+    try:
+        inp = json.load(sys.stdin)
+    except Exception:
+        sys.exit(0)
+
+    tool = inp.get("tool_name", inp.get("tool", ""))
+    if tool != "Bash":
+        sys.exit(0)
+
+    cmd = inp.get("tool_input", {}).get("command", "")
+    if not re.search(r"terraform\s+(apply|destroy)", cmd, re.IGNORECASE):
+        sys.exit(0)
+
+    # Determine env from the command or cwd
+    env_match = re.search(r"envs/([^/\s]+)", cmd)
+    cwd = inp.get("tool_input", {}).get("cwd", "")
+    if not env_match and cwd:
+        env_match = re.search(r"envs/([^/\s]+)", cwd)
+
+    if not env_match:
+        sys.exit(0)
+
+    env = env_match.group(1)
+    expected = ENV_TO_ACCOUNT.get(env)
+    if not expected:
+        sys.exit(0)  # unknown env — let it through
+
+    current = get_current_account()
+    if current is None:
+        print(
+            f"⚠ Cannot determine current AWS account. Blocking terraform {cmd.split()[1]} "
+            f"in envs/{env} to be safe.",
+            file=sys.stderr
+        )
+        print(
+            f"  If AWS isn't configured locally, run `aws sso login --profile {env}` first.",
+            file=sys.stderr
+        )
+        sys.exit(1)
+
+    if current != expected:
+        print(
+            f"❌ ACCOUNT MISMATCH: editing envs/{env} but active AWS account is "
+            f"{current}, expected {expected}.",
+            file=sys.stderr
+        )
+        print(
+            f"   Switch with: aws sso login --profile {env}  "
+            f"(or export AWS_PROFILE={env})",
+            file=sys.stderr
+        )
+        sys.exit(1)
+
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

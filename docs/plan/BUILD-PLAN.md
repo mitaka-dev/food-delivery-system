@@ -881,7 +881,7 @@ spring:
 - **Dependencies**: 2.5, 1.2 (the shared `ApiError` record must exist)
 
 ### Step 2.7: Consolidate deploy template (pilot checkpoint)
-- [ ] **Objective**: Now that user-service is fully running on EKS with its CI/CD pipeline and dashboard, capture the patterns that worked. This document becomes the template for services 2–10.
+- [x] **Objective**: Now that user-service is fully running on EKS with its CI/CD pipeline and dashboard, capture the patterns that worked. This document becomes the template for services 2–10.
 - **Files to create**:
   - `food-delivery-platform/docs/service-deploy-template.md`
 - **Key details**:

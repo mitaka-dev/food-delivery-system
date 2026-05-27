@@ -42,3 +42,4 @@ __pycache__/
 ### Secrets — never commit these ###
 .env
 .claude/settings.local.json
+/.codegraph/

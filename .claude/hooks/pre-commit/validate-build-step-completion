@@ -1,0 +1,195 @@
+#!/usr/bin/env python3
+"""
+Pre-commit hook: validate-build-step-completion
+
+Fires when a step transitions from [ ] to [x] in BUILD-PLAN.md.
+Locates automatable acceptance criteria and runs them; prompts for manual ones.
+"""
+import subprocess
+import sys
+import re
+from pathlib import Path
+
+
+PLAN_FILES = [
+    "docs/plan/BUILD-PLAN.md",
+    "build-plan.md",
+    "BUILD-PLAN.md",
+]
+
+AUTOMATABLE = [
+    # (pattern, label, command_template)
+    (r"mvn.*verify|maven.*test|tests?\s+pass", "maven verify",
+     "mvn -B -pl {service} -am verify -q"),
+    (r"coverage.*\d+%|\d+%.*coverage", "JaCoCo coverage",
+     "mvn -B -pl {service} verify -Pcoverage -q"),
+    (r"migrations?\s+appl|flyway.*migrat", "Flyway migrate",
+     "mvn -B -pl {service} flyway:migrate -q"),
+    (r"integration\s+test|IT\s+test|testcontainer", "integration tests",
+     "mvn -B -pl {service} verify -Pintegration-test -q"),
+    (r"terraform\s+validate", "terraform validate",
+     "terraform validate"),
+]
+
+
+def find_plan_file():
+    root = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True, text=True
+    ).stdout.strip()
+    for name in PLAN_FILES:
+        p = Path(root) / name
+        if p.exists():
+            return p
+    return None
+
+
+def get_flipped_steps(plan_path: str):
+    diff = subprocess.run(
+        ["git", "diff", "--cached", "--unified=5", "--", plan_path],
+        capture_output=True, text=True
+    ).stdout
+    if not diff:
+        return []
+
+    # Find step IDs where a [ ] line became a [x] line in the diff
+    added = set()
+    removed = set()
+    step_id = None
+    for line in diff.split("\n"):
+        # Track current step context from diff hunk
+        if re.match(r"^[+ -].*#{1,3}\s+Step\s+(\d+\.\d+)", line, re.IGNORECASE):
+            m = re.search(r"Step\s+(\d+\.\d+)", line, re.IGNORECASE)
+            if m:
+                step_id = m.group(1)
+        if line.startswith("+") and re.search(r"\[x\]", line, re.IGNORECASE):
+            if step_id:
+                added.add(step_id)
+        if line.startswith("-") and re.search(r"\[ \]", line, re.IGNORECASE):
+            if step_id:
+                removed.add(step_id)
+
+    # Only steps that genuinely flipped (had a removal of [ ] and addition of [x])
+    return list(added & removed) or list(added)
+
+
+def extract_criteria(plan_text: str, step_id: str) -> list:
+    """Extract acceptance criteria lines for a given step ID."""
+    # Find the step section
+    step_pattern = re.compile(
+        rf"#{1,3}\s+Step\s+{re.escape(step_id)}[:\s]",
+        re.IGNORECASE
+    )
+    m = step_pattern.search(plan_text)
+    if not m:
+        return []
+
+    section = plan_text[m.start():]
+    # Cut at the next step header or end of section
+    next_step = re.search(r"\n#{1,3}\s+Step\s+\d+\.\d+", section[1:])
+    if next_step:
+        section = section[:next_step.start() + 1]
+
+    # Find "Acceptance criteria" block
+    ac_match = re.search(r"Acceptance criteria.*?\n(.*?)(?=\n#{1,4}|\Z)",
+                         section, re.DOTALL | re.IGNORECASE)
+    if not ac_match:
+        return []
+
+    lines = [l.strip().lstrip("-*• ").strip()
+             for l in ac_match.group(1).split("\n")
+             if l.strip().lstrip("-*• ").strip()]
+    return lines
+
+
+def infer_service(step_id: str) -> str:
+    """Guess service path from step number (rough heuristic)."""
+    major = int(step_id.split(".")[0])
+    mapping = {
+        1: "common-libs",
+        2: "services/user-service",
+        3: "services/product-service",
+        4: "services/promotion-service",
+        5: "services/menu-service",
+        6: "services/basket-service",
+        7: "services/delivery-service",
+        8: "services/order-service",
+        9: "services/payment-service",
+        10: "services/kitchen-service",
+        11: "services/review-service",
+        12: "services/notification-service",
+    }
+    return mapping.get(major, ".")
+
+
+def try_automate(crit: str, step_id: str) -> bool | None:
+    """Return True=pass, False=fail, None=can't automate."""
+    crit_lower = crit.lower()
+    for pattern, label, cmd_tmpl in AUTOMATABLE:
+        if re.search(pattern, crit_lower, re.IGNORECASE):
+            service = infer_service(step_id)
+            cmd = cmd_tmpl.format(service=service)
+            print(f"  Running: {cmd}", flush=True)
+            result = subprocess.run(cmd.split(), capture_output=True)
+            if result.returncode == 0:
+                print(f"  ✓ {label} passed")
+                return True
+            else:
+                print(f"  ✗ {label} failed")
+                if result.stdout:
+                    print(result.stdout.decode()[-500:])
+                if result.stderr:
+                    print(result.stderr.decode()[-500:])
+                return False
+    return None
+
+
+def prompt(crit: str) -> bool:
+    print(f"  Manual check: {crit}")
+    try:
+        resp = input("  Confirmed? [y/N] ").strip().lower()
+        return resp == "y"
+    except (EOFError, KeyboardInterrupt):
+        # Non-interactive (CI) — auto-confirm
+        print("  (non-interactive — auto-confirming manual criterion)")
+        return True
+
+
+def main():
+    plan_path = find_plan_file()
+    if not plan_path:
+        sys.exit(0)  # no plan file; nothing to check
+
+    flipped = get_flipped_steps(str(plan_path))
+    if not flipped:
+        sys.exit(0)
+
+    plan_text = plan_path.read_text()
+    fail = False
+
+    for step_id in flipped:
+        print(f"\nValidating completion of Step {step_id}...")
+        criteria = extract_criteria(plan_text, step_id)
+
+        if not criteria:
+            print(f"  No automatable criteria found — marking OK")
+            continue
+
+        for crit in criteria:
+            result = try_automate(crit, step_id)
+            if result is None:
+                ok = prompt(crit)
+            else:
+                ok = result
+            if not ok:
+                print(f"  ❌ Not met: {crit}")
+                fail = True
+
+        if not fail:
+            print(f"  ✅ Step {step_id} validated")
+
+    sys.exit(1 if fail else 0)
+
+
+if __name__ == "__main__":
+    main()

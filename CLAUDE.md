@@ -54,6 +54,10 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 > **Before touching any HTTP controller or DTO — read `docs/API_PRINCIPLES.md`.**
 > It is the rubric every HTTP change is reviewed against. Current gap status is in `docs/API_AUDIT.md`.
 
+## Deploy Guidelines
+> **Before touching any IRSA Terraform, Kustomize manifest, `buildspec.yml`, or ArgoCD Application — read `docs/service-deploy-template.md`.**
+> It is the reference for every service deploy pattern: IRSA naming, Secrets Manager paths, Kustomize layout, ExternalSecrets, CI/CD wiring, and the FAQ of user-service surprises.
+
 ## Project Plan & Progress
 > The build plan lives in `docs/plan/` with these files:
 > - `docs/plan/PLAN.md` — entry point: how to use the plan, links to the two sub-documents

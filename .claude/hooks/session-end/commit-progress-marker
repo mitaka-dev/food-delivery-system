@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Session-end hook: commit-progress-marker
+#
+# Scans commits on this branch since main for step references.
+# Warns if a referenced step's checkbox is still [ ] in BUILD-PLAN.md.
+set -euo pipefail
+
+PLAN_FILE=""
+for candidate in "docs/plan/BUILD-PLAN.md" "build-plan.md" "BUILD-PLAN.md"; do
+  if [ -f "$candidate" ]; then
+    PLAN_FILE="$candidate"
+    break
+  fi
+done
+[ -z "$PLAN_FILE" ] && exit 0
+
+# Commits ahead of main on this branch
+COMMITS=$(git log main..HEAD --pretty=format:"%s" 2>/dev/null || true)
+[ -z "$COMMITS" ] && exit 0
+
+# Extract "step X.Y" or "X.Y" from commit subjects
+STEP_IDS=$(echo "$COMMITS" | grep -ioE "(step\s+)?[0-9]+\.[0-9]+" | \
+           grep -oE "[0-9]+\.[0-9]+" | sort -u || true)
+[ -z "$STEP_IDS" ] && exit 0
+
+UNCHECKED=()
+for sid in $STEP_IDS; do
+  # Look for a line like "- [ ] **Objective**" following the step header
+  if grep -A 5 -iE "#{1,3}\s+Step\s+${sid}[:\s]" "$PLAN_FILE" 2>/dev/null | \
+     grep -qE "^\s*-\s*\[\s*\]"; then
+    UNCHECKED+=("$sid")
+  fi
+done
+
+[ ${#UNCHECKED[@]} -eq 0 ] && exit 0
+
+echo "" >&2
+echo "ℹ The following steps have branch commits but may not be marked done in $PLAN_FILE:" >&2
+for sid in "${UNCHECKED[@]}"; do
+  echo "  - Step $sid" >&2
+done
+echo "" >&2
+echo "Check with: grep -n '\[ \]' $PLAN_FILE" >&2
+exit 0

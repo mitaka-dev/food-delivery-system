@@ -1,0 +1,94 @@
+{
+  "skill_name": "postgresql-flyway-migrations",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "I'm working on step 3.1 for product-service — setting up Aurora wiring and Flyway migrations. Write the V1 Flyway migration SQL for the products table. The JPA entity has: id (UUID primary key), name (VARCHAR 255, not null), description (TEXT, nullable), price (NUMERIC 10,2, not null, must be >= 0), category (VARCHAR 100), stock (INTEGER, default 0, must be >= 0), a version column for @Version optimistic locking, and created_at / updated_at timestamps. Include appropriate indexes.",
+      "expected_output": "A complete V1__create_products.sql migration using TIMESTAMPTZ (not TIMESTAMP/LocalDateTime), proper constraints, an index on category, gen_random_uuid() for the default PK, and correct two-underscore Flyway naming format.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Migration filename uses exactly two underscores (V1__create_products.sql format)",
+          "passed": null,
+          "evidence": ""
+        },
+        {
+          "text": "Timestamps use TIMESTAMPTZ not TIMESTAMP or LocalDateTime",
+          "passed": null,
+          "evidence": ""
+        },
+        {
+          "text": "UUID primary key uses gen_random_uuid() default",
+          "passed": null,
+          "evidence": ""
+        },
+        {
+          "text": "Stock and price columns have CHECK constraints (>= 0)",
+          "passed": null,
+          "evidence": ""
+        },
+        {
+          "text": "At least one index is created (e.g. on category)",
+          "passed": null,
+          "evidence": ""
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "We need to add a long_description column (TEXT, eventually NOT NULL) to the products table in product-service. The service is deployed with a rolling update strategy — at any point during a deploy, some pods run old code and some run new code. Walk me through the safe way to make this schema change without causing a production outage. Show the migration SQL and the deployment sequence.",
+      "expected_output": "A two-step sequence: first migration adds the column as NULL (safe for old pods), then code ships to write the column, then a second migration adds NOT NULL after all pods have updated. Should explicitly warn against doing NOT NULL directly.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "First migration adds column as NULL (not NOT NULL immediately)",
+          "passed": null,
+          "evidence": ""
+        },
+        {
+          "text": "Explains the rolling deployment risk of adding NOT NULL directly",
+          "passed": null,
+          "evidence": ""
+        },
+        {
+          "text": "Mentions a second migration for the NOT NULL constraint as a later step",
+          "passed": null,
+          "evidence": ""
+        },
+        {
+          "text": "Migration SQL files use correct Flyway naming (V{n}__ with two underscores)",
+          "passed": null,
+          "evidence": ""
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I'm getting HikariCP connection timeout errors in product-service under load. Our Aurora PostgreSQL cluster allows a maximum of 1000 connections total. We normally run 8 pods but can scale to 20 at peak. How should I set maximum-pool-size and what other HikariCP settings matter for Aurora? Show the application-production.yml config.",
+      "expected_output": "Recommends maximum-pool-size that accounts for peak pod count (1000/20 * 0.8 = 40 per pod), shows the full hikari YAML config block with connection-timeout, idle-timeout, max-lifetime (must be < Aurora wait_timeout), leak-detection-threshold, and pool-name.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Accounts for peak pod count (20) when calculating pool size, not just normal count (8)",
+          "passed": null,
+          "evidence": ""
+        },
+        {
+          "text": "Shows max-lifetime value and notes it must be less than Aurora's wait_timeout",
+          "passed": null,
+          "evidence": ""
+        },
+        {
+          "text": "Includes connection-timeout, idle-timeout, and leak-detection-threshold settings",
+          "passed": null,
+          "evidence": ""
+        },
+        {
+          "text": "Output is in application-production.yml YAML format under spring.datasource.hikari",
+          "passed": null,
+          "evidence": ""
+        }
+      ]
+    }
+  ]
+}
