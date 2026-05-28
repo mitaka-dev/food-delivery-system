@@ -44,13 +44,31 @@ public class ProductController {
         return ResponseEntity.ok(result);
     }
 
+    @Operation(summary = "Search products", description = "Full-text search on name and description fields.")
+    @ApiResponse(responseCode = "200", description = "Search results returned")
+    @GetMapping("/search")
+    public ResponseEntity<Page<ProductResponseDto>> searchProducts(
+            @RequestParam String q,
+            @PageableDefault(size = 20) Pageable pageable) {
+        return ResponseEntity.ok(productService.searchProducts(q, pageable));
+    }
+
     @Operation(summary = "Get product by ID")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Product found"),
             @ApiResponse(responseCode = "404", description = "Product not found")
     })
     @GetMapping("/{id}")
-    public ResponseEntity<ProductResponseDto> getProduct(@PathVariable UUID id) {
+    public ResponseEntity<ProductResponseDto> getProduct(
+            @PathVariable UUID id,
+            @RequestParam(defaultValue = "false") boolean nocache,
+            @Parameter(hidden = true) @RequestHeader(value = "X-User-Role", required = false) String role) {
+        if (nocache) {
+            if (!"ADMIN".equals(role)) {
+                throw new AccessDeniedException("Only ADMIN users can bypass cache");
+            }
+            return ResponseEntity.ok(productService.getProductFresh(id));
+        }
         return ResponseEntity.ok(productService.getProduct(id));
     }
 

@@ -919,7 +919,7 @@ spring:
 - **Dependencies**: 1.4
 
 ### Step 3.2: Caching layer + search endpoint
-- [ ] **Objective**: Add Redis cache-aside in front of product reads and a search endpoint.
+- [x] **Objective**: Add Redis cache-aside in front of product reads and a search endpoint.
 - **Files to create**:
   - `services/product-service/src/main/java/.../cache/ProductCacheConfig.java`
   - `services/product-service/src/test/java/.../service/ProductServiceCacheIT.java`

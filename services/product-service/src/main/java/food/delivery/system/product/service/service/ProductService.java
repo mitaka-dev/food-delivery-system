@@ -10,9 +10,13 @@ import food.delivery.system.product.service.repository.ProductRepository;
 import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+
+import static food.delivery.system.product.service.config.ProductCacheConfig.PRODUCTS_CACHE;
 
 import java.util.UUID;
 
@@ -42,7 +46,14 @@ public class ProductService {
         return toDto(product);
     }
 
+    @Cacheable(cacheNames = PRODUCTS_CACHE, key = "#id.toString()")
     public ProductResponseDto getProduct(UUID id) {
+        return productRepository.findById(id)
+                .map(this::toDto)
+                .orElseThrow(() -> new ProductNotFoundException(id));
+    }
+
+    public ProductResponseDto getProductFresh(UUID id) {
         return productRepository.findById(id)
                 .map(this::toDto)
                 .orElseThrow(() -> new ProductNotFoundException(id));
@@ -56,6 +67,11 @@ public class ProductService {
         return productRepository.findByCategory(category, pageable).map(this::toDto);
     }
 
+    public Page<ProductResponseDto> searchProducts(String query, Pageable pageable) {
+        return productRepository.search(query, pageable).map(this::toDto);
+    }
+
+    @CacheEvict(cacheNames = PRODUCTS_CACHE, key = "#productId.toString()", beforeInvocation = true)
     @Transactional
     public void reserveStock(UUID productId, int quantity) {
         Product product = productRepository.findById(productId)
@@ -70,6 +86,7 @@ public class ProductService {
         log.info("Reserved {} units of product {}, remaining stock={}", quantity, productId, product.getStock());
     }
 
+    @CacheEvict(cacheNames = PRODUCTS_CACHE, key = "#productId.toString()", beforeInvocation = true)
     @Transactional
     public void releaseStock(UUID productId, int quantity) {
         Product product = productRepository.findById(productId)
