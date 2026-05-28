@@ -1,16 +1,17 @@
 package food.delivery.system.basket.service.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import food.delivery.system.basket.service.domain.Basket;
+import food.delivery.system.basket.service.domain.BasketItem;
+import food.delivery.system.basket.service.domain.BasketRepository;
 import food.delivery.system.basket.service.exception.BasketItemNotFoundException;
+import food.delivery.system.basket.service.exception.BasketLimitExceededException;
 import food.delivery.system.basket.service.record.AddItemRequestDto;
 import food.delivery.system.basket.service.record.BasketDto;
 import food.delivery.system.basket.service.record.BasketItemDto;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -18,69 +19,73 @@ import java.util.UUID;
 @Service
 public class BasketService {
 
-    private static final String KEY_PREFIX = "basket:";
-    private static final Duration TTL = Duration.ofHours(24);
+    private static final int MAX_ITEMS = 50;
 
-    private final StringRedisTemplate redis;
-    private final ObjectMapper mapper;
+    private final BasketRepository basketRepository;
 
-    public BasketService(StringRedisTemplate redis, ObjectMapper mapper) {
-        this.redis = redis;
-        this.mapper = mapper;
+    public BasketService(BasketRepository basketRepository) {
+        this.basketRepository = basketRepository;
     }
 
     public BasketDto getBasket(String userId) {
-        String json = redis.opsForValue().get(KEY_PREFIX + userId);
-        if (json == null) return emptyBasket(userId);
-        try {
-            return mapper.readValue(json, BasketDto.class);
-        } catch (JsonProcessingException e) {
-            return emptyBasket(userId);
-        }
+        return basketRepository.findByUserId(userId)
+                .map(this::toDto)
+                .orElse(emptyBasket(userId));
     }
 
     public BasketDto addItem(String userId, AddItemRequestDto req) {
-        BasketDto current = getBasket(userId);
-        List<BasketItemDto> items = new ArrayList<>(current.items());
+        Basket current = basketRepository.findByUserId(userId)
+                .orElse(new Basket(userId, req.restaurantId(), new ArrayList<>(), Instant.now()));
+
+        if (!req.restaurantId().equals(current.getRestaurantId())) {
+            current = new Basket(userId, req.restaurantId(), new ArrayList<>(), Instant.now());
+        }
+
+        List<BasketItem> items = current.getItems();
+        int before = items.size();
         items.removeIf(i -> i.productId().equals(req.productId()));
-        items.add(new BasketItemDto(req.productId(), req.productName(), req.quantity(), req.price()));
-        BasketDto updated = new BasketDto(userId, items, calculateTotal(items));
-        save(userId, updated);
-        return updated;
+        boolean isNewProduct = items.size() == before;
+
+        if (isNewProduct && items.size() >= MAX_ITEMS) {
+            throw new BasketLimitExceededException("Basket limit of " + MAX_ITEMS + " items reached");
+        }
+
+        items.add(new BasketItem(req.productId(), req.productName(), req.quantity(), req.price()));
+        current.setLastModified(Instant.now());
+
+        basketRepository.save(current);
+        return toDto(current);
     }
 
     public BasketDto removeItem(String userId, UUID productId) {
-        BasketDto current = getBasket(userId);
-        List<BasketItemDto> items = current.items().stream()
-                .filter(i -> !i.productId().equals(productId))
-                .toList();
-        if (items.size() == current.items().size()) {
+        Basket current = basketRepository.findByUserId(userId)
+                .orElse(new Basket(userId, null, new ArrayList<>(), Instant.now()));
+
+        int before = current.getItems().size();
+        current.getItems().removeIf(i -> i.productId().equals(productId));
+
+        if (current.getItems().size() == before) {
             throw new BasketItemNotFoundException("Item " + productId + " not found in basket");
         }
-        BasketDto updated = new BasketDto(userId, items, calculateTotal(items));
-        save(userId, updated);
-        return updated;
+
+        current.setLastModified(Instant.now());
+        basketRepository.save(current);
+        return toDto(current);
     }
 
     public void clearBasket(String userId) {
-        redis.delete(KEY_PREFIX + userId);
+        basketRepository.delete(userId);
     }
 
-    private void save(String userId, BasketDto basket) {
-        try {
-            redis.opsForValue().set(KEY_PREFIX + userId, mapper.writeValueAsString(basket), TTL);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to serialize basket", e);
-        }
+    private BasketDto toDto(Basket basket) {
+        List<BasketItemDto> itemDtos = basket.getItems().stream()
+                .map(i -> new BasketItemDto(i.productId(), i.productName(), i.quantity(), i.price()))
+                .toList();
+        return new BasketDto(basket.getUserId(), basket.getRestaurantId(), itemDtos,
+                basket.subtotal(), basket.getLastModified());
     }
 
     private BasketDto emptyBasket(String userId) {
-        return new BasketDto(userId, List.of(), BigDecimal.ZERO);
-    }
-
-    private BigDecimal calculateTotal(List<BasketItemDto> items) {
-        return items.stream()
-                .map(i -> i.price().multiply(BigDecimal.valueOf(i.quantity())))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new BasketDto(userId, null, List.of(), BigDecimal.ZERO, null);
     }
 }

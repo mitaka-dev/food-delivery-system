@@ -982,7 +982,7 @@ spring:
 > Goal: customers add/remove items with idempotency; items are validated against Menu via gRPC in real time.
 
 ### Step 4.1: basket-service skeleton with Redis primary store
-- [ ] **Objective**: Spring Boot service with Redis (Lettuce) as primary store.
+- [x] **Objective**: Spring Boot service with Redis (Lettuce) as primary store.
 - **Files to create**:
   - `services/basket-service/pom.xml`
   - `services/basket-service/src/main/java/.../BasketApplication.java`

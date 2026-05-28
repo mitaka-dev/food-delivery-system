@@ -13,6 +13,9 @@ public record AddItemRequestDto(
         @NotNull @Schema(description = "Product ID", example = "a1b2c3d4-e5f6-7890-abcd-ef1234567890")
         UUID productId,
 
+        @NotNull @Schema(description = "Restaurant ID", example = "b2c3d4e5-f6a7-8901-bcde-f12345678901")
+        UUID restaurantId,
+
         @NotBlank @Schema(description = "Product name", example = "Margherita Pizza")
         String productName,
 
