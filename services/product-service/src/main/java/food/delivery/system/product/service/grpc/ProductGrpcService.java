@@ -36,11 +36,13 @@ public class ProductGrpcService extends ProductServiceGrpc.ProductServiceImplBas
         try {
             UUID id = UUID.fromString(request.getProductId());
             ProductResponseDto dto = productService.getProduct(id);
+            boolean restaurantPaused = productService.isRestaurantPaused(dto.restaurantId());
             responseObserver.onNext(ProductAvailability.newBuilder()
                     .setExists(true)
                     .setInStock(dto.stock() > 0)
                     .setCurrentPrice(dto.price().toPlainString())
                     .setStock(dto.stock())
+                    .setRestaurantPaused(restaurantPaused)
                     .build());
         } catch (ProductNotFoundException e) {
             responseObserver.onNext(ProductAvailability.newBuilder()

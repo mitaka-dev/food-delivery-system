@@ -14,5 +14,6 @@ public record ProductResponseDto(
         @Schema(description = "Price in currency units") BigDecimal price,
         @Schema(description = "Product category") ProductCategory category,
         @Schema(description = "Available stock (uses optimistic locking)") int stock,
-        @Schema(description = "CloudFront image URL, null if no image uploaded") String imageUrl
+        @Schema(description = "CloudFront image URL, null if no image uploaded") String imageUrl,
+        @Schema(description = "Restaurant this product belongs to, null if unassigned") UUID restaurantId
 ) {}

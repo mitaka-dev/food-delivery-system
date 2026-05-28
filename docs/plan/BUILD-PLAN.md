@@ -960,7 +960,7 @@ spring:
 - **Dependencies**: 3.3
 
 ### Step 3.5: RESTAURANT_PAUSED listener + manifests + deployment
-- [ ] **Objective**: Subscribe to Kitchen events to hide overloaded restaurants. Deploy to EKS.
+- [x] **Objective**: Subscribe to Kitchen events to hide overloaded restaurants. Deploy to EKS.
 - **Files to create**:
   - `services/product-service/src/main/java/.../listener/RestaurantPausedListener.java`
   - `services/product-service/src/main/java/.../domain/RestaurantStatus.java` (JPA entity — PostgreSQL row tracking paused/resumed state)

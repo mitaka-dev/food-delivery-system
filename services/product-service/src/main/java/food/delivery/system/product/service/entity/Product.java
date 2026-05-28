@@ -32,6 +32,9 @@ public class Product {
     @Column(name = "image_s3_key")
     private String imageS3Key;
 
+    @Column(name = "restaurant_id")
+    private UUID restaurantId;
+
     // Optimistic locking — prevents race conditions on concurrent stock updates
     @Version
     private Long version;
@@ -56,6 +59,9 @@ public class Product {
 
     public String getImageS3Key() { return imageS3Key; }
     public void setImageS3Key(String imageS3Key) { this.imageS3Key = imageS3Key; }
+
+    public UUID getRestaurantId() { return restaurantId; }
+    public void setRestaurantId(UUID restaurantId) { this.restaurantId = restaurantId; }
 
     public Long getVersion() { return version; }
 }

@@ -13,6 +13,11 @@ import java.util.UUID;
 public interface ProductRepository extends JpaRepository<Product, UUID> {
     Page<Product> findByCategory(ProductCategory category, Pageable pageable);
 
-    @Query("SELECT p FROM Product p WHERE LOWER(p.name) LIKE LOWER(CONCAT('%', :q, '%')) OR LOWER(p.description) LIKE LOWER(CONCAT('%', :q, '%'))")
+    @Query("SELECT p FROM Product p " +
+           "WHERE (LOWER(p.name) LIKE LOWER(CONCAT('%', :q, '%')) " +
+           "OR LOWER(p.description) LIKE LOWER(CONCAT('%', :q, '%'))) " +
+           "AND (p.restaurantId IS NULL OR NOT EXISTS " +
+           "(SELECT rs FROM RestaurantStatus rs " +
+           "WHERE rs.restaurantId = p.restaurantId AND rs.paused = true))")
     Page<Product> search(@Param("q") String q, Pageable pageable);
 }

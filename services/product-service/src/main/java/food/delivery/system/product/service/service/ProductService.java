@@ -10,6 +10,7 @@ import food.delivery.system.product.service.record.ImageUploadResponse;
 import food.delivery.system.product.service.record.ProductResponseDto;
 import food.delivery.system.product.service.record.UpdateProductDto;
 import food.delivery.system.product.service.repository.ProductRepository;
+import food.delivery.system.product.service.repository.RestaurantStatusRepository;
 import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,14 +32,17 @@ public class ProductService {
     private static final Logger log = LoggerFactory.getLogger(ProductService.class);
 
     private final ProductRepository productRepository;
+    private final RestaurantStatusRepository restaurantStatusRepository;
     private final ImageUploadService imageUploadService;
     private final String cloudFrontBaseUrl;
 
     public ProductService(
             ProductRepository productRepository,
+            RestaurantStatusRepository restaurantStatusRepository,
             @Value("${app.cloudfront.base-url:}") String cloudFrontBaseUrl,
             ImageUploadService imageUploadService) {
         this.productRepository = productRepository;
+        this.restaurantStatusRepository = restaurantStatusRepository;
         this.cloudFrontBaseUrl = cloudFrontBaseUrl;
         this.imageUploadService = imageUploadService;
     }
@@ -133,6 +137,13 @@ public class ProductService {
         log.info("Released {} units of product {}, new stock={}", quantity, productId, product.getStock());
     }
 
+    public boolean isRestaurantPaused(UUID restaurantId) {
+        if (restaurantId == null) return false;
+        return restaurantStatusRepository.findById(restaurantId)
+                .map(rs -> rs.isPaused())
+                .orElse(false);
+    }
+
     private ProductResponseDto toDto(Product product) {
         String imageUrl = null;
         if (StringUtils.hasText(cloudFrontBaseUrl) && StringUtils.hasText(product.getImageS3Key())) {
@@ -145,7 +156,8 @@ public class ProductService {
                 product.getPrice(),
                 product.getCategory(),
                 product.getStock(),
-                imageUrl
+                imageUrl,
+                product.getRestaurantId()
         );
     }
 }

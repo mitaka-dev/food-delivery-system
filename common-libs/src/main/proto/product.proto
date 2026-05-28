@@ -15,8 +15,9 @@ message VerifyProductRequest {
 }
 
 message ProductAvailability {
-  bool   exists        = 1;
-  bool   in_stock      = 2;
-  string current_price = 3;
-  int32  stock         = 4;
+  bool   exists             = 1;
+  bool   in_stock           = 2;
+  string current_price      = 3;
+  int32  stock              = 4;
+  bool   restaurant_paused  = 5;
 }
