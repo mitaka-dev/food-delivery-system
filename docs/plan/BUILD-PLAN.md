@@ -947,7 +947,7 @@ spring:
 - **Dependencies**: 3.2
 
 ### Step 3.4: gRPC server for internal price/availability verification
-- [ ] **Objective**: Expose `ProductService.VerifyProduct(productId)` for Basket and Order services to confirm item availability and current price before acting on it.
+- [x] **Objective**: Expose `ProductService.VerifyProduct(productId)` for Basket and Order services to confirm item availability and current price before acting on it.
 - **Files to create**:
   - `common-libs/src/main/proto/product.proto`
   - `services/product-service/src/main/java/.../grpc/ProductGrpcService.java`

@@ -26,6 +26,10 @@ spring:
   cache:
     type: redis
 
+grpc:
+  server:
+    port: ${GRPC_PORT:9090}
+
 app:
   s3:
     bucket: ${S3_BUCKET}

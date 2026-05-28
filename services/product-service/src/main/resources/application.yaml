@@ -45,6 +45,18 @@ app:
   cloudfront:
     base-url: ${CLOUDFRONT_BASE_URL:}
 
+grpc:
+  server:
+    port: 9090
+
+resilience4j:
+  ratelimiter:
+    instances:
+      grpc-verify:
+        limitForPeriod: 1000
+        limitRefreshPeriod: 1s
+        timeoutDuration: 0ms
+
 management:
   tracing:
     sampling:

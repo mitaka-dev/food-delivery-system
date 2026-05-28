@@ -40,6 +40,7 @@
         <jjwt.version>0.12.6</jjwt.version>
         <spring-modulith.version>2.0.5</spring-modulith.version>
         <testcontainers.version>1.21.0</testcontainers.version>
+        <grpc.version>1.71.0</grpc.version>
         <maven.compiler.source>25</maven.compiler.source>
         <maven.compiler.target>25</maven.compiler.target>
         <maven.compiler.release>25</maven.compiler.release>
@@ -116,6 +117,13 @@
                 <groupId>software.amazon.awssdk</groupId>
                 <artifactId>bom</artifactId>
                 <version>2.29.0</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.grpc</groupId>
+                <artifactId>grpc-bom</artifactId>
+                <version>${grpc.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

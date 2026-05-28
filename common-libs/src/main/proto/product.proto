@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package food.delivery.product;
+
+option java_multiple_files = true;
+option java_package = "food.delivery.system.grpc.product";
+option java_outer_classname = "ProductProto";
+
+service ProductService {
+  rpc VerifyProduct(VerifyProductRequest) returns (ProductAvailability);
+}
+
+message VerifyProductRequest {
+  string product_id = 1;
+}
+
+message ProductAvailability {
+  bool   exists        = 1;
+  bool   in_stock      = 2;
+  string current_price = 3;
+  int32  stock         = 4;
+}
