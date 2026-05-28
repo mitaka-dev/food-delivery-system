@@ -1,10 +1,10 @@
 # Project Status
 
-**Last updated:** 2026-05-27
+**Last updated:** 2026-05-28
 
 ## Where We Are
 
-- **Progress:** 23 / 97 steps complete
+- **Progress:** 24 / 97 steps complete
 - **Active branch:** `build/phase-1`
 - **Environment:** Single env — `platform-infra/envs/production/` only.
 - **Repo layout:** Services under `services/`. GitOps repo at `../food-delivery-gitops/`.
@@ -23,8 +23,8 @@ All infrastructure provisioned: VPC, EKS Fargate, Aurora PostgreSQL Serverless v
 
 ## Phase 3 — In Progress
 
-- **Done:** 3.1 (product-service Aurora wiring: `application-production.yml` with HikariCP tuning, `V1__create_products.sql` Flyway migration, `FlywayConfig` bean matching user-service pattern, `ProductRepositoryIT` with Testcontainers PostgreSQL — 2/2 tests pass: CRUD roundtrip + OLE on concurrent stock update. Also fixed root pom.xml Surefire config to include `*IT.java` tests platform-wide.), 3.2 (`ProductCacheConfig` with `@EnableCaching` + `RedisCacheManager` — key prefix `product:v1:`, TTL 30 min, JSON serialization; `@Cacheable` on `getProduct`, `@CacheEvict(beforeInvocation=true)` on `reserveStock`/`releaseStock`; `GET /api/v1/products/search?q=` LIKE endpoint; `?nocache=true` ADMIN bypass on `GET /{id}`; `ProductServiceCacheIT` with Testcontainers Redis — 3/3 tests pass: cache hit, eviction, post-eviction DB fetch. 6/6 product-service tests pass total.)
-- **Next:** 3.3 — admin write endpoints + S3 image uploads
+- **Done:** 3.1 (product-service Aurora wiring: `application-production.yml` with HikariCP tuning, `V1__create_products.sql` Flyway migration, `FlywayConfig` bean matching user-service pattern, `ProductRepositoryIT` with Testcontainers PostgreSQL — 2/2 tests pass: CRUD roundtrip + OLE on concurrent stock update. Also fixed root pom.xml Surefire config to include `*IT.java` tests platform-wide.), 3.2 (`ProductCacheConfig` with `@EnableCaching` + `RedisCacheManager` — key prefix `product:v1:`, TTL 30 min, JSON serialization; `@Cacheable` on `getProduct`, `@CacheEvict(beforeInvocation=true)` on `reserveStock`/`releaseStock`; `GET /api/v1/products/search?q=` LIKE endpoint; `?nocache=true` ADMIN bypass on `GET /{id}`; `ProductServiceCacheIT` with Testcontainers Redis — 3/3 tests pass: cache hit, eviction, post-eviction DB fetch. 6/6 product-service tests pass total.), 3.3 (`PATCH /api/v1/products/{id}` with `@CacheEvict(beforeInvocation=true)` + partial-update semantics; `POST /api/v1/products/{id}/image-upload-url` returns pre-signed S3 PUT URL (content-addressed key `products/{id}/{sha256}.jpg`, 5-min TTL); `V2__add_image_s3_key.sql` migration; `ImageUploadService` + `S3Config` with `@ConditionalOnProperty`; `ProductResponseDto` extended with `imageUrl` (CloudFront); `ProductControllerIT` with `@MockitoBean ImageUploadService` + Testcontainers — 4/4 tests pass: price update cache eviction, 403 on non-ADMIN, presigned URL, 403 on non-ADMIN. 10/10 product-service tests pass total.)
+- **Next:** 3.4 — gRPC server for internal price/availability verification
 
 ## Key Files
 

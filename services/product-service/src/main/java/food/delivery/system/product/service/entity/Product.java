@@ -29,6 +29,9 @@ public class Product {
     @Column(nullable = false)
     private int stock;
 
+    @Column(name = "image_s3_key")
+    private String imageS3Key;
+
     // Optimistic locking — prevents race conditions on concurrent stock updates
     @Version
     private Long version;
@@ -50,6 +53,9 @@ public class Product {
 
     public int getStock() { return stock; }
     public void setStock(int stock) { this.stock = stock; }
+
+    public String getImageS3Key() { return imageS3Key; }
+    public void setImageS3Key(String imageS3Key) { this.imageS3Key = imageS3Key; }
 
     public Long getVersion() { return version; }
 }

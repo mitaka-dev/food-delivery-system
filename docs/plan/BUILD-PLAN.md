@@ -933,7 +933,7 @@ spring:
 - **Dependencies**: 3.1
 
 ### Step 3.3: Admin write endpoints + S3 image uploads
-- [ ] **Objective**: Admin users can update products; product images upload directly to S3 via pre-signed URLs.
+- [x] **Objective**: Admin users can update products; product images upload directly to S3 via pre-signed URLs.
 - **Files to create**:
   - `services/product-service/src/main/java/.../service/ImageUploadService.java`
   - `services/product-service/src/test/java/.../api/ProductControllerIT.java`

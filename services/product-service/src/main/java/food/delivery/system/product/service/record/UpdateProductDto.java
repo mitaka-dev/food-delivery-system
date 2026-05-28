@@ -2,17 +2,16 @@ package food.delivery.system.product.service.record;
 
 import food.delivery.system.product.service.enums.ProductCategory;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Positive;
 
 import java.math.BigDecimal;
-import java.util.UUID;
 
-@Schema(description = "Product response")
-public record ProductResponseDto(
-        @Schema(description = "Product UUID") UUID id,
+@Schema(description = "Partial product update — null fields are left unchanged")
+public record UpdateProductDto(
         @Schema(description = "Product name") String name,
         @Schema(description = "Product description") String description,
-        @Schema(description = "Price in currency units") BigDecimal price,
+        @Schema(description = "Price in currency units") @Positive BigDecimal price,
         @Schema(description = "Product category") ProductCategory category,
-        @Schema(description = "Available stock (uses optimistic locking)") int stock,
-        @Schema(description = "CloudFront image URL, null if no image uploaded") String imageUrl
+        @Schema(description = "Available stock") @Min(0) Integer stock
 ) {}

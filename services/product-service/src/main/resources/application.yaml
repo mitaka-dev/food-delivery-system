@@ -38,6 +38,13 @@ spring:
       properties:
         spring.json.trusted.packages: "food.delivery.system.*"
 
+app:
+  s3:
+    bucket: ${S3_BUCKET:product-images-local}
+    region: ${AWS_REGION:us-east-1}
+  cloudfront:
+    base-url: ${CLOUDFRONT_BASE_URL:}
+
 management:
   tracing:
     sampling:
