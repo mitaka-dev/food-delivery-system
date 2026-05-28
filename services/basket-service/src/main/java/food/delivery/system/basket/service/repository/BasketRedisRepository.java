@@ -7,13 +7,15 @@ import food.delivery.system.basket.service.domain.Basket;
 import food.delivery.system.basket.service.domain.BasketItem;
 import food.delivery.system.basket.service.domain.BasketRepository;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.data.redis.core.HashOperations;
+import org.springframework.data.redis.core.RedisOperations;
+import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
+import java.util.function.Function;
 
 @Repository
 public class BasketRedisRepository implements BasketRepository {
@@ -37,25 +39,79 @@ public class BasketRedisRepository implements BasketRepository {
     @Override
     public void save(Basket basket) {
         String key = KEY_PREFIX + basket.getUserId();
-        try {
-            HashOperations<String, String, String> ops = redis.opsForHash();
-            Map<String, String> hash = new HashMap<>();
-            hash.put(F_RESTAURANT_ID, basket.getRestaurantId().toString());
-            hash.put(F_CREATED_AT, basket.getLastModified().toString());
-            hash.put(F_ITEMS_JSON, basketObjectMapper.writeValueAsString(basket.getItems()));
-            ops.putAll(key, hash);
-            redis.expire(key, TTL);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to serialize basket items", e);
-        }
+        redis.opsForHash().putAll(key, serializeToHash(basket));
+        redis.expire(key, TTL);
     }
 
     @Override
     public Optional<Basket> findByUserId(String userId) {
         String key = KEY_PREFIX + userId;
-        HashOperations<String, String, String> ops = redis.opsForHash();
-        Map<String, String> hash = ops.entries(key);
-        if (hash.isEmpty()) return Optional.empty();
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        Map<String, String> hash = (Map<String, String>) (Map) redis.opsForHash().entries(key);
+        return deserializeFromHash(userId, hash);
+    }
+
+    @Override
+    public void delete(String userId) {
+        redis.delete(KEY_PREFIX + userId);
+    }
+
+    @Override
+    public Basket executeAtomically(String userId, Function<Optional<Basket>, Basket> modifier) {
+        String key = KEY_PREFIX + userId;
+        while (true) {
+            RuntimeException[] caught = {null};
+            Basket[] result = {null};
+
+            Boolean committed = redis.execute(new SessionCallback<Boolean>() {
+                @Override
+                @SuppressWarnings({"unchecked", "rawtypes"})
+                public Boolean execute(RedisOperations operations) {
+                    operations.watch(key);
+
+                    Map<String, String> hash = (Map<String, String>) (Map) operations.opsForHash().entries(key);
+                    Optional<Basket> current = deserializeFromHash(userId, hash);
+
+                    try {
+                        result[0] = modifier.apply(current);
+                    } catch (RuntimeException ex) {
+                        caught[0] = ex;
+                        operations.unwatch();
+                        return Boolean.FALSE;
+                    }
+
+                    operations.multi();
+                    try {
+                        operations.opsForHash().putAll(key, serializeToHash(result[0]));
+                    } catch (RuntimeException ex) {
+                        operations.discard();
+                        throw ex;
+                    }
+                    operations.expire(key, TTL);
+                    return ((List<?>) operations.exec()) != null;
+                }
+            });
+
+            if (caught[0] != null) throw caught[0];
+            if (Boolean.TRUE.equals(committed)) return result[0];
+            // EXEC returned null: key was modified between WATCH and EXEC — retry
+        }
+    }
+
+    private Map<String, String> serializeToHash(Basket basket) {
+        try {
+            Map<String, String> hash = new HashMap<>();
+            hash.put(F_RESTAURANT_ID, basket.getRestaurantId().toString());
+            hash.put(F_CREATED_AT, basket.getLastModified().toString());
+            hash.put(F_ITEMS_JSON, basketObjectMapper.writeValueAsString(basket.getItems()));
+            return hash;
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to serialize basket", e);
+        }
+    }
+
+    private Optional<Basket> deserializeFromHash(String userId, Map<String, String> hash) {
+        if (hash == null || hash.isEmpty()) return Optional.empty();
         try {
             UUID restaurantId = UUID.fromString(hash.get(F_RESTAURANT_ID));
             Instant lastModified = Instant.parse(hash.get(F_CREATED_AT));
@@ -64,10 +120,5 @@ public class BasketRedisRepository implements BasketRepository {
         } catch (Exception e) {
             return Optional.empty();
         }
-    }
-
-    @Override
-    public void delete(String userId) {
-        redis.delete(KEY_PREFIX + userId);
     }
 }

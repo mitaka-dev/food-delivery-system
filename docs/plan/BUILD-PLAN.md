@@ -1002,7 +1002,7 @@ spring:
 - **Dependencies**: 1.4
 
 ### Step 4.2: REST endpoints + idempotency layer
-- [ ] **Objective**: `GET /v1/basket`, `POST /v1/basket/items`, `DELETE /v1/basket/items/{itemId}`, `POST /v1/basket/clear`.
+- [x] **Objective**: `GET /v1/basket`, `POST /v1/basket/items`, `DELETE /v1/basket/items/{itemId}`, `POST /v1/basket/clear`.
 - **Files to create**:
   - `services/basket-service/src/main/java/.../api/BasketController.java`
   - `services/basket-service/src/main/java/.../service/BasketService.java`

@@ -14,6 +14,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -34,43 +35,46 @@ public class BasketService {
     }
 
     public BasketDto addItem(String userId, AddItemRequestDto req) {
-        Basket current = basketRepository.findByUserId(userId)
-                .orElse(new Basket(userId, req.restaurantId(), new ArrayList<>(), Instant.now()));
+        Basket result = basketRepository.executeAtomically(userId, optCurrent -> {
+            Basket current = optCurrent.orElse(
+                    new Basket(userId, req.restaurantId(), new ArrayList<>(), Instant.now()));
 
-        if (!req.restaurantId().equals(current.getRestaurantId())) {
-            current = new Basket(userId, req.restaurantId(), new ArrayList<>(), Instant.now());
-        }
+            if (!req.restaurantId().equals(current.getRestaurantId())) {
+                current = new Basket(userId, req.restaurantId(), new ArrayList<>(), Instant.now());
+            }
 
-        List<BasketItem> items = current.getItems();
-        int before = items.size();
-        items.removeIf(i -> i.productId().equals(req.productId()));
-        boolean isNewProduct = items.size() == before;
+            List<BasketItem> items = current.getItems();
+            int before = items.size();
+            items.removeIf(i -> i.productId().equals(req.productId()));
+            boolean isNewProduct = items.size() == before;
 
-        if (isNewProduct && items.size() >= MAX_ITEMS) {
-            throw new BasketLimitExceededException("Basket limit of " + MAX_ITEMS + " items reached");
-        }
+            if (isNewProduct && items.size() >= MAX_ITEMS) {
+                throw new BasketLimitExceededException("Basket limit of " + MAX_ITEMS + " items reached");
+            }
 
-        items.add(new BasketItem(req.productId(), req.productName(), req.quantity(), req.price()));
-        current.setLastModified(Instant.now());
-
-        basketRepository.save(current);
-        return toDto(current);
+            items.add(new BasketItem(req.productId(), req.productName(), req.quantity(), req.price()));
+            current.setLastModified(Instant.now());
+            return current;
+        });
+        return toDto(result);
     }
 
     public BasketDto removeItem(String userId, UUID productId) {
-        Basket current = basketRepository.findByUserId(userId)
-                .orElse(new Basket(userId, null, new ArrayList<>(), Instant.now()));
+        Basket result = basketRepository.executeAtomically(userId, optCurrent -> {
+            Basket current = optCurrent.orElse(
+                    new Basket(userId, null, new ArrayList<>(), Instant.now()));
 
-        int before = current.getItems().size();
-        current.getItems().removeIf(i -> i.productId().equals(productId));
+            int before = current.getItems().size();
+            current.getItems().removeIf(i -> i.productId().equals(productId));
 
-        if (current.getItems().size() == before) {
-            throw new BasketItemNotFoundException("Item " + productId + " not found in basket");
-        }
+            if (current.getItems().size() == before) {
+                throw new BasketItemNotFoundException("Item " + productId + " not found in basket");
+            }
 
-        current.setLastModified(Instant.now());
-        basketRepository.save(current);
-        return toDto(current);
+            current.setLastModified(Instant.now());
+            return current;
+        });
+        return toDto(result);
     }
 
     public void clearBasket(String userId) {
