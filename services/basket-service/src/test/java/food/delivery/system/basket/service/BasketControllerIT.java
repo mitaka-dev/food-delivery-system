@@ -33,7 +33,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Testcontainers
 @TestPropertySource(properties = {
         "spring.kafka.bootstrap-servers=localhost:9092",
-        "management.tracing.sampling.probability=0.0"
+        "management.tracing.sampling.probability=0.0",
+        "grpc.client.product.enabled=false"
 })
 class BasketControllerIT {
 

@@ -16,6 +16,28 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
 
+grpc:
+  client:
+    product:
+      enabled: true
+      target: ${PRODUCT_GRPC_TARGET:product-service:9090}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      product-grpc:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+  retry:
+    instances:
+      product-grpc:
+        maxAttempts: 2
+        waitDuration: 1ms
+        ignoreExceptions:
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
+
 management:
   tracing:
     sampling:

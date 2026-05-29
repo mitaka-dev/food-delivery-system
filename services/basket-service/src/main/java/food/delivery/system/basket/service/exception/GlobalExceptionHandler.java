@@ -1,5 +1,6 @@
 package food.delivery.system.basket.service.exception;
 
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -26,6 +27,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleLimitExceeded(BasketLimitExceededException ex) {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
                 .body(new ErrorResponse(422, "Unprocessable Entity", ex.getMessage(), LocalDateTime.now()));
+    }
+
+    @ExceptionHandler(ProductServiceUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleProductServiceUnavailable(ProductServiceUnavailableException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header(HttpHeaders.RETRY_AFTER, "30")
+                .body(new ErrorResponse(503, "Service Unavailable", ex.getMessage(), LocalDateTime.now()));
+    }
+
+    @ExceptionHandler(ProductValidationException.class)
+    public ResponseEntity<ErrorResponse> handleProductValidation(ProductValidationException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(409, "Conflict", ex.getMessage(), LocalDateTime.now()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

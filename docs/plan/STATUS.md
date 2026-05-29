@@ -4,7 +4,7 @@
 
 ## Where We Are
 
-- **Progress:** 28 / 97 steps complete
+- **Progress:** 29 / 97 steps complete
 - **Active branch:** `build/phase-1`
 - **Environment:** Single env — `platform-infra/envs/production/` only.
 - **Repo layout:** Services under `services/`. GitOps repo at `../food-delivery-gitops/`.
@@ -27,8 +27,8 @@ All infrastructure provisioned: VPC, EKS Fargate, Aurora PostgreSQL Serverless v
 
 ## Phase 4 — In Progress
 
-- **Done:** 4.1 (basket-service domain layer + Redis hash store: `domain/Basket`, `domain/BasketItem`, `domain/BasketRepository` interface, `BasketRedisRepository` using hash ops with key `basket:{userId}` + 24h TTL refresh; `BasketService` rewritten to use repository, enforces 50-item limit + single-restaurant rule; `BasketLimitExceededException` → 422; `AddItemRequestDto` updated with `restaurantId`; `BasketDto` updated with `restaurantId` + `lastModified`; `application-production.yml` + `buildspec.yml`; `BasketServiceIT` with Testcontainers Redis — 5/5 tests pass), 4.2 (`IdempotencyFilter` as `OncePerRequestFilter` on `POST /api/v1/basket/items` — Idempotency-Key required (400 if missing), Redis store `idem:basket:{userId}:{key}` with 24h TTL, same key + same body → cached 200 response, same key + different body → 409, `ContentCachingResponseWrapper` captures response for caching, custom `RepeatableReadRequest` inner class replays body for `@RequestBody`; `executeAtomically()` added to `BasketRepository` interface + `BasketRedisRepository` with WATCH/MULTI/EXEC `SessionCallback` + retry loop; `BasketService.addItem()` and `removeItem()` use `executeAtomically()`; `BasketControllerIT` with Testcontainers Redis — 4/4 tests pass; 9/9 basket-service tests pass total)
-- **Next:** 4.3 — gRPC client to Product Service with circuit breaker
+- **Done:** 4.1 (basket-service domain layer + Redis hash store: `domain/Basket`, `domain/BasketItem`, `domain/BasketRepository` interface, `BasketRedisRepository` using hash ops with key `basket:{userId}` + 24h TTL refresh; `BasketService` rewritten to use repository, enforces 50-item limit + single-restaurant rule; `BasketLimitExceededException` → 422; `AddItemRequestDto` updated with `restaurantId`; `BasketDto` updated with `restaurantId` + `lastModified`; `application-production.yml` + `buildspec.yml`; `BasketServiceIT` with Testcontainers Redis — 5/5 tests pass), 4.2 (`IdempotencyFilter` as `OncePerRequestFilter` on `POST /api/v1/basket/items` — Idempotency-Key required (400 if missing), Redis store `idem:basket:{userId}:{key}` with 24h TTL, same key + same body → cached 200 response, same key + different body → 409, `ContentCachingResponseWrapper` captures response for caching, custom `RepeatableReadRequest` inner class replays body for `@RequestBody`; `executeAtomically()` added to `BasketRepository` interface + `BasketRedisRepository` with WATCH/MULTI/EXEC `SessionCallback` + retry loop; `BasketService.addItem()` and `removeItem()` use `executeAtomically()`; `BasketControllerIT` with Testcontainers Redis — 4/4 tests pass; 9/9 basket-service tests pass total), 4.3 (`ProductGrpcClient` with Resilience4j CB `product-grpc` + retry 2 attempts + 200ms gRPC deadline; `ProductClientConfig` `@ConditionalOnProperty` creates `ManagedChannel` + blocking stub targeting `product-service:9090`; `ProductClientFallback` → `ProductServiceUnavailableException` (503 + `Retry-After: 30`); `BasketService.addItem()` pre-validates inStock, restaurantPaused, price match before Redis WATCH; `ProductValidationException` → 409; `Optional<ProductGrpcClient>` injection allows existing tests to opt-out via `grpc.client.product.enabled=false`; `ProductGrpcClientIT` — 5/5 tests pass including dead-server fail-fast chaos test; 14/14 basket-service tests pass total)
+- **Next:** 4.4 — Checkout endpoint + manifests + deployment
 
 ## Key Files
 

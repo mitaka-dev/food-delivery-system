@@ -1019,7 +1019,7 @@ spring:
 - **Dependencies**: 4.1
 
 ### Step 4.3: gRPC client to Product Service with circuit breaker
-- [ ] **Objective**: Validate every add-to-basket call against Menu Service in real time.
+- [x] **Objective**: Validate every add-to-basket call against Menu Service in real time.
 - **Files to create**:
   - `services/basket-service/src/main/java/.../client/MenuGrpcClient.java`
   - `services/basket-service/src/main/java/.../client/MenuClientConfig.java`

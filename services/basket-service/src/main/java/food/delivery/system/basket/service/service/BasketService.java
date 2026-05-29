@@ -1,13 +1,16 @@
 package food.delivery.system.basket.service.service;
 
+import food.delivery.system.basket.service.client.ProductGrpcClient;
 import food.delivery.system.basket.service.domain.Basket;
 import food.delivery.system.basket.service.domain.BasketItem;
 import food.delivery.system.basket.service.domain.BasketRepository;
 import food.delivery.system.basket.service.exception.BasketItemNotFoundException;
 import food.delivery.system.basket.service.exception.BasketLimitExceededException;
+import food.delivery.system.basket.service.exception.ProductValidationException;
 import food.delivery.system.basket.service.record.AddItemRequestDto;
 import food.delivery.system.basket.service.record.BasketDto;
 import food.delivery.system.basket.service.record.BasketItemDto;
+import food.delivery.system.grpc.product.ProductAvailability;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -23,9 +26,12 @@ public class BasketService {
     private static final int MAX_ITEMS = 50;
 
     private final BasketRepository basketRepository;
+    private final Optional<ProductGrpcClient> productGrpcClient;
 
-    public BasketService(BasketRepository basketRepository) {
+    public BasketService(BasketRepository basketRepository,
+                         Optional<ProductGrpcClient> productGrpcClient) {
         this.basketRepository = basketRepository;
+        this.productGrpcClient = productGrpcClient;
     }
 
     public BasketDto getBasket(String userId) {
@@ -35,6 +41,20 @@ public class BasketService {
     }
 
     public BasketDto addItem(String userId, AddItemRequestDto req) {
+        if (productGrpcClient.isPresent()) {
+            ProductAvailability availability = productGrpcClient.get().verify(req.productId());
+            if (!availability.getInStock()) {
+                throw new ProductValidationException("Product is not in stock");
+            }
+            if (availability.getRestaurantPaused()) {
+                throw new ProductValidationException("Restaurant is temporarily unavailable");
+            }
+            if (!availability.getCurrentPrice().isEmpty()
+                    && new BigDecimal(availability.getCurrentPrice()).compareTo(req.price()) != 0) {
+                throw new ProductValidationException("Price has changed to " + availability.getCurrentPrice());
+            }
+        }
+
         Basket result = basketRepository.executeAtomically(userId, optCurrent -> {
             Basket current = optCurrent.orElse(
                     new Basket(userId, req.restaurantId(), new ArrayList<>(), Instant.now()));
